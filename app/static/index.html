@@ -800,6 +800,14 @@
   </header>
 
   <main class="container">
+    <div id="siteAnnouncementBar" style="display:none;margin-bottom:8px;padding:8px 12px;border-radius:6px;border:1px solid rgba(245,158,11,0.35);background:rgba(245,158,11,0.1);color:#fde68a;font-size:12px;align-items:center;justify-content:space-between;gap:10px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.22);color:#fbbf24;font-weight:600;font-size:11px;">公告</span>
+        <strong id="siteAnnouncementTitle"></strong>
+        <span id="siteAnnouncementBody" style="color:var(--text-main);"></span>
+      </div>
+      <button class="btn" style="padding:2px 8px;font-size:11px;" onclick="document.getElementById('siteAnnouncementBar').style.display='none'">收起</button>
+    </div>
     <!-- VIEW 1: Trading Desk -->
     <section id="viewTrade" class="view-section active">
       <!-- Market Index Strip -->
@@ -1431,7 +1439,10 @@
           <h3 style="font-size:15px;">账户中心与权限管理</h3>
           <span id="accRoleBadge" class="role-badge user">USER</span>
         </div>
-        <button class="btn" onclick="closeAccountModal()">关闭</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <a id="btnOpenAdminConsole" href="/admin" class="btn btn-amber" style="display:none;text-decoration:none;">独立后台 /admin ↗</a>
+          <button class="btn" onclick="closeAccountModal()">关闭</button>
+        </div>
       </div>
 
       <div id="accTabBar" class="seg" style="margin-bottom:12px;">
@@ -4678,6 +4689,10 @@
       if (adminBtn) {
         adminBtn.style.display = u.role === "ADMIN" ? "inline-block" : "none";
       }
+      const adminPageBtn = document.getElementById("btnOpenAdminConsole");
+      if (adminPageBtn) {
+        adminPageBtn.style.display = u.role === "ADMIN" ? "inline-flex" : "none";
+      }
       switchAccountTab("profile");
       document.getElementById("accountModal")?.classList.add("open");
     }
@@ -4905,7 +4920,20 @@
       } catch (e) { showToast(e.message, "err"); }
     }
 
+    async function loadAnnouncementBanner() {
+      try {
+        const ann = await api("/api/announcement");
+        const bar = document.getElementById("siteAnnouncementBar");
+        if (bar && ann.enabled && (ann.title || ann.content)) {
+          document.getElementById("siteAnnouncementTitle").textContent = ann.title || "";
+          document.getElementById("siteAnnouncementBody").textContent = ann.content || "";
+          bar.style.display = "flex";
+        }
+      } catch (_) {}
+    }
+
     async function bootstrapTerminal() {
+      loadAnnouncementBanner();
       try {
         const initial = await api("/api/state");
         applyState(initial);

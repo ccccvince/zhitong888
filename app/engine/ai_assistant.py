@@ -234,13 +234,16 @@ class AIAssistantService:
             return _default_http_client(timeout_sec, local_direct=_is_local_host(host))
         return self.http_client_factory(timeout_sec)
 
-    @staticmethod
-    def _has_platform_trial() -> bool:
+    def _get_platform_trial_config(self) -> dict[str, Any]:
+        return self.db.get_public_ai_config()
+
+    def _has_platform_trial(self) -> bool:
+        cfg = self._get_platform_trial_config()
         return bool(
-            settings.public_ai_api_key
-            and settings.public_ai_base_url
-            and settings.public_ai_model
-            and settings.public_ai_daily_limit > 0
+            cfg.get("api_key")
+            and cfg.get("base_url")
+            and cfg.get("model")
+            and int(cfg.get("daily_limit") or 0) > 0
         )
 
     def _get_raw_row(self, user_id: str = "default") -> dict[str, Any]:
@@ -280,10 +283,17 @@ class AIAssistantService:
                 "models_endpoint": raw_url.rstrip("/") + "/models",
             }
         raw_key = str(row.get("api_key") or "")
-        trial_ok = self._has_platform_trial()
+        pub_cfg = self._get_platform_trial_config()
+        trial_limit = int(pub_cfg.get("daily_limit") or 0)
+        trial_ok = bool(
+            pub_cfg.get("api_key")
+            and pub_cfg.get("base_url")
+            and pub_cfg.get("model")
+            and trial_limit > 0
+        )
         trial_rem = 0
         if trial_ok:
-            _, trial_rem = self.db.get_platform_ai_usage(user_id, settings.public_ai_daily_limit)
+            _, trial_rem = self.db.get_platform_ai_usage(user_id, trial_limit)
         return AIConfigView(
             provider_name=str(row.get("provider_name") or "通用 OpenAI 兼容"),
             base_url=ep["base_url"],
@@ -307,9 +317,9 @@ class AIAssistantService:
             updated_at=row.get("updated_at"),
             allow_private_endpoints=self.allow_private_endpoints,
             platform_trial_available=trial_ok,
-            trial_daily_limit=settings.public_ai_daily_limit if trial_ok else 0,
+            trial_daily_limit=trial_limit if trial_ok else 0,
             trial_remaining_today=trial_rem,
-            platform_trial_model=settings.public_ai_model if trial_ok else "",
+            platform_trial_model=str(pub_cfg.get("model") or "") if trial_ok else "",
         )
 
     def get_config_view(self, user_id: str = "default") -> AIConfigView:
@@ -423,72 +433,13 @@ class AIAssistantService:
         view = self._row_to_view(preview_row, user_id=user_id)
         checked_at = now_str()
 
-        tcp_ok, tcp_ms, tcp_msg = self.tcp_probe(ep["host"], ep["port"], float(timeout_sec))
-        http_status: Optional[int] = None
-        chat_probe_ok: Optional[bool] = None
-        discovered_models: list[str] = []
-        status = "ERROR"
-        message = tcp_msg
-
-        if tcp_ok:
-            headers = {"Content-Type": "application/json"}
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-
-            try:
-                with self._open_client(ep["host"], float(min(timeout_sec, 15))) as client:
-                    # 1. Discover models via /models
-                    try:
-                        m_resp = client.get(ep["models_endpoint"], headers=headers)
-                        http_status = m_resp.status_code
-                        if m_resp.status_code == 200:
-                            m_data = m_resp.json()
-                            if isinstance(m_data, dict) and isinstance(m_data.get("data"), list):
-                                discovered_models = [
-                                    str(it["id"])
-                                    for it in m_data["data"]
-                                    if isinstance(it, dict) and it.get("id")
-                                ][:30]
-                    except Exception as exc:
-                        message = f"端口可达 ({tcp_ms}ms)，/models 检测异常: {type(exc).__name__}"
-
-                    # 2. Optionally run a minimal chat probe to validate model & API key
-                    if probe_chat:
-                        c_resp = client.post(
-                            ep["chat_endpoint"],
-                            headers=headers,
-                            json={
-                                "model": model_name,
-                                "messages": [{"role": "user", "content": "请回复 OK"}],
-                                "max_tokens": 8,
-                                "temperature": 0,
-                            },
-                        )
-                        http_status = c_resp.status_code
-                        if c_resp.status_code == 200:
-                            c_body = c_resp.json()
-                            if isinstance(c_body, dict) and c_body.get("choices"):
-                                chat_probe_ok = True
-                                status = "OK"
-                                message = f"端口 {ep['host']}:{ep['port']} 连通正常，模型 {model_name} 响应成功 ({tcp_ms}ms)"
-                            else:
-                                chat_probe_ok = False
-                                status = "WARN"
-                                message = f"接口返回 HTTP 200，但响应格式非标准 OpenAI choices"
-                        else:
-                            chat_probe_ok = False
-                            err_detail = self._extract_http_error(c_resp)
-                            status = "WARN" if c_resp.status_code in (401, 403, 404, 422) else "ERROR"
-                            message = f"TCP 端口 {ep['host']}:{ep['port']} 可达，但对话接口返回 HTTP {c_resp.status_code}: {err_detail}"
-                    elif http_status == 200:
-                        status = "OK"
-                        message = f"端口 {ep['host']}:{ep['port']} 可达，发现 {len(discovered_models)} 个模型"
-                    elif http_status is not None:
-                        status = "WARN"
-                        message = f"TCP 端口可达 ({tcp_ms}ms)，/models 返回 HTTP {http_status}"
-            except Exception as exc:
-                status = "ERROR"
-                message = f"TCP 端口 {ep['host']}:{ep['port']} 可达，但 HTTP 请求失败: {type(exc).__name__}"
+        tcp_ok, tcp_ms, http_status, chat_probe_ok, discovered_models, status, message = self._probe_endpoint(
+            ep=ep,
+            model_name=model_name,
+            api_key=api_key,
+            timeout_sec=timeout_sec,
+            probe_chat=probe_chat,
+        )
 
         # Always persist check result when testing saved config or same base_url
         if not use_override or ep["base_url"] == saved.get("base_url"):
@@ -515,6 +466,121 @@ class AIAssistantService:
             message=message,
             checked_at=checked_at,
         )
+
+    def _probe_endpoint(
+        self,
+        *,
+        ep: dict[str, Any],
+        model_name: str,
+        api_key: str,
+        timeout_sec: int = 15,
+        probe_chat: bool = True,
+    ) -> tuple[bool, Optional[float], Optional[int], Optional[bool], list[str], str, str]:
+        """Run TCP, /models, and optional minimal chat completion probe against an OpenAI-compatible endpoint."""
+        tcp_ok, tcp_ms, tcp_msg = self.tcp_probe(ep["host"], ep["port"], float(timeout_sec))
+        http_status: Optional[int] = None
+        chat_probe_ok: Optional[bool] = None
+        discovered_models: list[str] = []
+        status = "ERROR"
+        message = tcp_msg
+
+        if tcp_ok:
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
+            try:
+                with self._open_client(ep["host"], float(min(timeout_sec, 15))) as client:
+                    try:
+                        m_resp = client.get(ep["models_endpoint"], headers=headers)
+                        http_status = m_resp.status_code
+                        if m_resp.status_code == 200:
+                            m_data = m_resp.json()
+                            if isinstance(m_data, dict) and isinstance(m_data.get("data"), list):
+                                discovered_models = [
+                                    str(it["id"])
+                                    for it in m_data["data"]
+                                    if isinstance(it, dict) and it.get("id")
+                                ][:30]
+                    except Exception as exc:
+                        message = f"端口可达 ({tcp_ms}ms)，/models 检测异常: {type(exc).__name__}"
+
+                    if probe_chat:
+                        c_resp = client.post(
+                            ep["chat_endpoint"],
+                            headers=headers,
+                            json={
+                                "model": model_name,
+                                "messages": [{"role": "user", "content": "请回复 OK"}],
+                                "max_tokens": 8,
+                                "temperature": 0,
+                            },
+                        )
+                        http_status = c_resp.status_code
+                        if c_resp.status_code == 200:
+                            c_body = c_resp.json()
+                            if isinstance(c_body, dict) and c_body.get("choices"):
+                                chat_probe_ok = True
+                                status = "OK"
+                                message = f"端口 {ep['host']}:{ep['port']} 连通正常，模型 {model_name} 响应成功 ({tcp_ms}ms)"
+                            else:
+                                chat_probe_ok = False
+                                status = "WARN"
+                                message = "接口返回 HTTP 200，但响应格式非标准 OpenAI choices"
+                        else:
+                            chat_probe_ok = False
+                            err_detail = self._extract_http_error(c_resp)
+                            status = "WARN" if c_resp.status_code in (401, 403, 404, 422) else "ERROR"
+                            message = f"TCP 端口 {ep['host']}:{ep['port']} 可达，但对话接口返回 HTTP {c_resp.status_code}: {err_detail}"
+                    elif http_status == 200:
+                        status = "OK"
+                        message = f"端口 {ep['host']}:{ep['port']} 可达，发现 {len(discovered_models)} 个模型"
+                    elif http_status is not None:
+                        status = "WARN"
+                        message = f"TCP 端口可达 ({tcp_ms}ms)，/models 返回 HTTP {http_status}"
+            except Exception as exc:
+                status = "ERROR"
+                message = f"TCP 端口 {ep['host']}:{ep['port']} 可达，但 HTTP 请求失败: {type(exc).__name__}"
+
+        return tcp_ok, tcp_ms, http_status, chat_probe_ok, discovered_models, status, message
+
+    def test_platform_ai(
+        self,
+        *,
+        base_url: str = "",
+        model: str = "",
+        api_key: str = "",
+    ) -> dict[str, Any]:
+        """Validate the saved or candidate platform public trial AI endpoint."""
+        saved = self._get_platform_trial_config()
+        raw_url = (base_url or saved.get("base_url") or "").strip()
+        model_name = (model or saved.get("model") or "").strip()
+        eff_key = (api_key or saved.get("api_key") or "").strip()
+        if not raw_url or not model_name:
+            raise ValueError("请先填写公共 AI 的接口地址（Base URL）和模型名称")
+        ep = parse_ai_endpoint(
+            raw_url,
+            allow_private=self.allow_private_endpoints,
+            resolve_dns=not self.allow_private_endpoints,
+        )
+        tcp_ok, tcp_ms, http_status, chat_probe_ok, discovered_models, status, message = self._probe_endpoint(
+            ep=ep,
+            model_name=model_name,
+            api_key=eff_key,
+            timeout_sec=15,
+            probe_chat=True,
+        )
+        return {
+            "ok": status == "OK",
+            "status": status,
+            "message": message,
+            "tcp_reachable": tcp_ok,
+            "tcp_latency_ms": tcp_ms,
+            "http_status": http_status,
+            "chat_probe_ok": chat_probe_ok,
+            "discovered_models": discovered_models,
+            "checked_at": now_str(),
+        }
 
     @staticmethod
     def _extract_http_error(resp: httpx.Response) -> str:
@@ -587,18 +653,20 @@ class AIAssistantService:
                     created_at=now_str(),
                 )
         elif self._has_platform_trial():
-            allowed, rem = self.db.consume_platform_ai_quota(user_id, settings.public_ai_daily_limit)
+            pub_cfg = self._get_platform_trial_config()
+            trial_limit = int(pub_cfg.get("daily_limit") or 0)
+            allowed, rem = self.db.consume_platform_ai_quota(user_id, trial_limit)
             if allowed:
                 use_platform_trial = True
-                pub_ep = parse_ai_endpoint(settings.public_ai_base_url, allow_private=True)
+                pub_ep = parse_ai_endpoint(str(pub_cfg["base_url"]), allow_private=True)
                 active_chat_endpoint = pub_ep["chat_endpoint"]
                 active_host = pub_ep["host"]
                 active_port = pub_ep["port"]
-                active_model = settings.public_ai_model
-                active_key = settings.public_ai_api_key
-                active_label = f"平台体验 AI · {active_model}"
+                active_model = str(pub_cfg["model"])
+                active_key = str(pub_cfg["api_key"])
+                active_label = f"{pub_cfg.get('provider_name') or '平台体验 AI'} · {active_model}"
                 trial_warnings.append(
-                    f"使用平台体验额度（今日剩余 {rem}/{settings.public_ai_daily_limit} 次）；可在「AI端口」配置个人 Key 不限次使用。"
+                    f"使用平台体验额度（今日剩余 {rem}/{trial_limit} 次）；可在「AI端口」配置个人 Key 不限次使用。"
                 )
             else:
                 fallback_reply, drafts = self._build_local_fallback(
@@ -618,7 +686,7 @@ class AIAssistantService:
                     reply=fallback_reply,
                     drafts=drafts,
                     warnings=[
-                        f"今日平台免费 AI 体验额度（{settings.public_ai_daily_limit} 次/天）已用完，已降级为本地规则摘要；点击「AI端口」填入你自己的 API Key 即可继续大模型对话。"
+                        f"今日平台免费 AI 体验额度（{trial_limit} 次/天）已用完，已降级为本地规则摘要；点击「AI端口」填入你自己的 API Key 即可继续大模型对话。"
                     ],
                     created_at=now_str(),
                 )

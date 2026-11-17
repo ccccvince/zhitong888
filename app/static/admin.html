@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智瞳量化 · 管理后台</title>
+  <style>
+    :root {
+      --bg-paper: #F5F2EB;
+      --bg-card: #FBF9F5;
+      --bg-tile: #EFECE5;
+      --bg-hover: #ECE7DD;
+      --border: #DCD6CA;
+      --border-soft: #E7E2D8;
+      --ink: #211E1A;
+      --ink-muted: #6F685F;
+      --ink-light: #968E83;
+      --cinnabar: #A63A2B;
+      --cinnabar-hover: #8D2F22;
+      --cinnabar-soft: rgba(166, 58, 43, 0.08);
+      --pine: #1E433B;
+      --pine-soft: rgba(30, 67, 59, 0.1);
+      --ochre: #9E7B3B;
+      --slate: #4B6573;
+      --danger: #B4382A;
+      --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, serif;
+      --sans: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "JetBrains Mono", "Cascadia Mono", Consolas, Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: var(--bg-paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+
+    .hidden { display: none !important; }
+    .mono { font-family: var(--mono); }
+    .serif { font-family: var(--serif); }
+
+    /* Seal Emblem */
+    .seal {
+      width: 34px;
+      height: 34px;
+      border-radius: 6px;
+      background: var(--cinnabar);
+      color: #FBF9F5;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      flex-shrink: 0;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+    }
+    .seal.lg { width: 44px; height: 44px; border-radius: 8px; }
+    .seal svg { width: 100%; height: 100%; }
+
+    /* Toast */
+    .toast-wrap {
+      position: fixed;
+      top: 18px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast {
+      background: var(--ink);
+      color: var(--bg-card);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      box-shadow: 0 10px 26px rgba(33, 30, 26, 0.18);
+      border-left: 3px solid var(--cinnabar);
+      pointer-events: auto;
+      animation: fadeSlide 0.2s ease;
+    }
+    .toast.ok { border-left-color: #2E7D5B; }
+    .toast.err { border-left-color: #D9483B; }
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Login Gate (Centered Paper Card matching Ziwei) */
+    .login-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .login-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px 22px 6px 22px;
+      padding: 42px 36px 34px;
+      box-shadow: 0 16px 40px rgba(33, 30, 26, 0.06);
+      text-align: center;
+    }
+    .login-eyebrow {
+      margin-top: 14px;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      color: var(--cinnabar);
+      font-weight: 500;
+    }
+    .login-title {
+      margin-top: 8px;
+      font-family: var(--serif);
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: 0.02em;
+    }
+    .login-desc {
+      margin-top: 10px;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      line-height: 1.7;
+    }
+    .login-notice {
+      margin-top: 16px;
+      padding: 10px 12px;
+      background: var(--cinnabar-soft);
+      border: 1px solid rgba(166, 58, 43, 0.22);
+      border-radius: 6px;
+      color: var(--cinnabar);
+      font-size: 12px;
+      text-align: left;
+    }
+    .login-form {
+      margin-top: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      text-align: left;
+    }
+    .field-input {
+      width: 100%;
+      padding: 10px 14px;
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13.5px;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field-input:focus {
+      border-color: var(--cinnabar);
+      box-shadow: 0 0 0 2px rgba(166, 58, 43, 0.1);
+    }
+    textarea.field-input { resize: vertical; min-height: 92px; line-height: 1.6; }
+    .btn-cinnabar {
+      width: 100%;
+      padding: 11px 18px;
+      border: none;
+      border-radius: 6px;
+      background: var(--cinnabar);
+      color: #FBF9F5;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn-cinnabar:hover { background: var(--cinnabar-hover); }
+    .btn-cinnabar:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-inline {
+      width: auto;
+      padding: 9px 18px;
+      font-size: 13px;
+    }
+    .btn-outline {
+      padding: 7px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-card);
+      color: var(--ink);
+      font-size: 12.5px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn-outline:hover { background: var(--bg-tile); border-color: #C7BEB0; }
+    .btn-outline.danger { color: var(--danger); }
+    .btn-outline.danger:hover { background: rgba(180, 56, 42, 0.08); border-color: rgba(180, 56, 42, 0.35); }
+    .login-footer {
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+    .login-footer a:hover { color: var(--cinnabar); }
+
+    /* Sticky Two-Tier Top Header */
+    .topbar-sticky {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: rgba(245, 242, 235, 0.94);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    .tier-1 {
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .brand-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-wordmark {
+      font-family: var(--serif);
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .service-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+    }
+    .dot-live {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #2C7A5B;
+      box-shadow: 0 0 0 3px rgba(44, 122, 91, 0.16);
+    }
+    .tier1-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 12.5px;
+    }
+    .link-action {
+      color: var(--cinnabar);
+      cursor: pointer;
+      background: none;
+      border: none;
+      font-size: 12.5px;
+    }
+    .link-action:hover { text-decoration: underline; }
+    .link-muted {
+      color: var(--ink-muted);
+      cursor: pointer;
+      background: none;
+      border: none;
+      font-size: 12.5px;
+    }
+    .link-muted:hover { color: var(--ink); }
+
+    .tier-2 {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      overflow-x: auto;
+    }
+    .subnav-label {
+      font-size: 12px;
+      color: var(--cinnabar);
+      margin-right: 6px;
+      flex-shrink: 0;
+      font-weight: 500;
+    }
+    .nav-tab {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--ink-muted);
+      padding: 5px 15px;
+      border-radius: 9999px;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .nav-tab:hover { color: var(--ink); background: rgba(251, 249, 245, 0.65); }
+    .nav-tab.active {
+      background: var(--bg-card);
+      color: var(--ink);
+      border-color: var(--border);
+      font-weight: 500;
+      box-shadow: 0 1px 2px rgba(33, 30, 26, 0.04);
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 34px 24px 64px;
+    }
+
+    /* Hero Section */
+    .hero-eyebrow {
+      font-size: 12px;
+      color: var(--cinnabar);
+      letter-spacing: 0.06em;
+      font-weight: 500;
+    }
+    .hero-row {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 28px;
+      align-items: end;
+    }
+    .hero-title {
+      font-family: var(--serif);
+      font-size: 36px;
+      line-height: 1.28;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .hero-summary {
+      font-size: 13px;
+      color: var(--ink-muted);
+      line-height: 1.75;
+      justify-self: end;
+      max-width: 420px;
+    }
+
+    /* Pine Banner */
+    .pine-banner {
+      margin-top: 24px;
+      background: var(--pine);
+      color: #F4F1EA;
+      border-radius: 6px 18px 6px 6px;
+      padding: 22px 26px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .pine-eyebrow {
+      font-size: 11.5px;
+      color: rgba(244, 241, 234, 0.72);
+      letter-spacing: 0.04em;
+    }
+    .pine-url {
+      margin-top: 4px;
+      font-family: var(--mono);
+      font-size: 20px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      word-break: break-all;
+    }
+    .pine-sub {
+      margin-top: 6px;
+      font-size: 12px;
+      color: rgba(244, 241, 234, 0.78);
+    }
+    .btn-copy-pill {
+      padding: 9px 18px;
+      border-radius: 9999px;
+      border: none;
+      background: var(--bg-card);
+      color: var(--ink);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: transform 0.12s, background 0.15s;
+    }
+    .btn-copy-pill:hover { background: #FFFFFF; }
+    .btn-copy-pill:active { transform: scale(0.98); }
+
+    /* Connected 3x3 KPI Grid */
+    .kpi-grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--border);
+      border-left: 1px solid var(--border);
+      background: var(--bg-card);
+    }
+    .kpi-cell {
+      padding: 20px 22px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .kpi-label {
+      font-size: 12.5px;
+      color: var(--ink-muted);
+    }
+    .kpi-value {
+      margin-top: 8px;
+      font-family: var(--serif);
+      font-size: 31px;
+      line-height: 1.15;
+      color: var(--cinnabar);
+      font-weight: 500;
+    }
+    .kpi-note {
+      margin-top: 8px;
+      font-size: 11.5px;
+      color: var(--ink-light);
+    }
+
+    /* Section Cards */
+    .section-card {
+      margin-top: 22px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 24px 26px;
+    }
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-soft);
+      flex-wrap: wrap;
+    }
+    .section-eyebrow {
+      font-size: 11.5px;
+      color: var(--cinnabar);
+      letter-spacing: 0.05em;
+      font-weight: 500;
+    }
+    .section-title {
+      margin-top: 4px;
+      font-family: var(--serif);
+      font-size: 23px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--bg-tile);
+      color: var(--ink-muted);
+    }
+    .pill.pine { background: var(--pine-soft); color: var(--pine); }
+    .pill.warn { background: rgba(166, 58, 43, 0.11); color: var(--cinnabar); }
+
+    /* Progress Bars (Disk & DB) */
+    .bar-list { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 92px 1fr 126px;
+      align-items: center;
+      gap: 14px;
+      font-size: 12.5px;
+    }
+    .bar-track {
+      height: 8px;
+      border-radius: 9999px;
+      background: var(--bg-tile);
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 9999px;
+      background: var(--pine);
+      transition: width 0.35s ease;
+    }
+    .bar-fill.cinnabar { background: var(--cinnabar); }
+    .bar-fill.ochre { background: var(--ochre); }
+    .bar-fill.slate { background: var(--slate); }
+    .bar-val {
+      text-align: right;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+    .footnote {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--ink-light);
+    }
+
+    /* 14-day multi-bar trends */
+    .legend-row {
+      margin-top: 16px;
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-swatch { width: 14px; height: 4px; border-radius: 2px; }
+    .trend-rows { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .trend-row {
+      display: grid;
+      grid-template-columns: 52px 1fr 30px 1fr 30px 1fr 30px;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+    }
+    .trend-date { font-family: var(--mono); color: var(--ink-muted); }
+    .trend-num { font-family: var(--mono); color: var(--ink-muted); text-align: right; }
+
+    /* Two Column Split */
+    .split-2 {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    .split-2 > .section-card { margin-top: 0; }
+
+    /* Stone-sand Grid Tiles */
+    .tile-grid-3 {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .stone-tile {
+      background: var(--bg-tile);
+      border-radius: 6px;
+      padding: 16px 12px;
+      text-align: center;
+    }
+    .stone-num {
+      font-family: var(--serif);
+      font-size: 26px;
+      line-height: 1.2;
+      color: var(--cinnabar);
+      font-weight: 500;
+    }
+    .stone-label {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--ink-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Filter Toolbar & Tables */
+    .toolbar {
+      margin-top: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip {
+      padding: 5px 12px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--ink-muted);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .chip.active {
+      background: var(--ink);
+      color: var(--bg-card);
+      border-color: var(--ink);
+    }
+    .table-wrap {
+      margin-top: 14px;
+      overflow-x: auto;
+      border: 1px solid var(--border-soft);
+      border-radius: 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      text-align: left;
+    }
+    th {
+      background: var(--bg-tile);
+      color: var(--ink-muted);
+      font-weight: 500;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--border-soft);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(239, 236, 229, 0.45); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge.admin { background: rgba(166, 58, 43, 0.12); color: var(--cinnabar); }
+    .badge.user { background: var(--bg-tile); color: var(--ink-muted); }
+    .badge.active { background: var(--pine-soft); color: var(--pine); }
+    .badge.disabled { background: rgba(180, 56, 42, 0.12); color: var(--danger); }
+
+    /* Forms inside Section Cards */
+    .form-grid-2 {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-label { font-size: 12.5px; color: var(--ink-muted); font-weight: 500; }
+    .form-footer {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    /* Checkboxes / Mode Cards (matching System -> Registration Style) */
+    .option-stack { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+    .option-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px 18px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-card);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .option-card.selected {
+      border-color: var(--cinnabar);
+      background: rgba(166, 58, 43, 0.03);
+    }
+    .option-card input {
+      margin-top: 3px;
+      accent-color: var(--cinnabar);
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+    .option-title { font-size: 14px; font-weight: 500; color: var(--ink); }
+    .option-desc { margin-top: 3px; font-size: 12px; color: var(--ink-muted); }
+
+    /* Checklist (Privacy boundaries) */
+    .check-list { margin-top: 14px; list-style: none; }
+    .check-list li {
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .check-list li:last-child { border-bottom: none; }
+    .check-mark { color: var(--pine); font-weight: 700; }
+
+    /* Diagnostic Result Box */
+    .diag-box {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-tile);
+      font-size: 12.5px;
+    }
+    .diag-box.ok { border-color: rgba(30, 67, 59, 0.35); background: rgba(30, 67, 59, 0.06); color: var(--pine); }
+    .diag-box.err { border-color: rgba(166, 58, 43, 0.35); background: rgba(166, 58, 43, 0.06); color: var(--cinnabar); }
+
+    /* Responsive */
+    @media (max-width: 860px) {
+      .hero-row, .split-2, .form-grid-2 { grid-template-columns: 1fr; }
+      .hero-summary { justify-self: start; max-width: none; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .tile-grid-3 { grid-template-columns: repeat(2, 1fr); }
+      .trend-row { grid-template-columns: 48px 1fr 24px 1fr 24px 1fr 24px; gap: 6px; }
+    }
+    @media (max-width: 540px) {
+      .kpi-grid { grid-template-columns: 1fr; }
+      .bar-row { grid-template-columns: 76px 1fr 100px; }
+      .service-status { display: none; }
+      .hero-title { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="toastWrap" class="toast-wrap"></div>
+
+  <!-- Login Gate -->
+  <main id="loginGate" class="login-wrap">
+    <section class="login-card">
+      <div class="seal lg" aria-hidden="true">
+        <svg viewBox="0 0 44 44" fill="none">
+          <circle cx="22" cy="22" r="15.5" stroke="rgba(251,249,245,0.45)" stroke-width="0.9" stroke-dasharray="2.5 2.5" />
+          <circle cx="34.5" cy="12.5" r="1.4" fill="rgba(251,249,245,0.85)" />
+          <text x="22" y="28.5" text-anchor="middle" fill="#FBF9F5" font-size="18" font-family="Songti SC, Noto Serif SC, serif">瞳</text>
+        </svg>
+      </div>
+      <div class="login-eyebrow">智瞳量化 · 管理后台</div>
+      <h1 class="login-title">请登录管理员控制台</h1>
+      <p class="login-desc">
+        前台交易终端对用户开放，后台运行数据、公共 AI 接口与用户权限只对管理员开放。登录态通过当前浏览器安全 Cookie 维持。
+      </p>
+
+      <div id="nonAdminNotice" class="login-notice hidden"></div>
+
+      <form id="adminLoginForm" class="login-form" onsubmit="handleAdminLogin(event)">
+        <input id="loginUsername" class="field-input" type="text" placeholder="管理员账号（如 admin）" autocomplete="username" value="admin" required />
+        <input id="loginPassword" class="field-input" type="password" placeholder="管理员密码" autocomplete="current-password" required />
+        <button id="btnAdminLogin" type="submit" class="btn-cinnabar">进入后台</button>
+      </form>
+
+      <div class="login-footer">
+        <a href="/">返回公开前台</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- Authenticated Admin Shell -->
+  <div id="adminShell" class="hidden">
+    <header class="topbar-sticky" role="banner">
+      <div class="topbar-inner">
+        <div class="tier-1">
+          <a href="/" class="brand-link">
+            <span class="seal" aria-hidden="true">
+              <svg viewBox="0 0 34 34" fill="none">
+                <circle cx="17" cy="17" r="12" stroke="rgba(251,249,245,0.42)" stroke-width="0.85" stroke-dasharray="2 2" />
+                <text x="17" y="22.5" text-anchor="middle" fill="#FBF9F5" font-size="14" font-family="Songti SC, Noto Serif SC, serif">瞳</text>
+              </svg>
+            </span>
+            <span class="brand-wordmark">智瞳量化</span>
+          </a>
+
+          <div class="service-status">
+            <span class="dot-live"></span>
+            <span id="topServiceLabel">云端服务运行中</span>
+          </div>
+
+          <div class="tier1-actions">
+            <span id="topAdminUser" class="pill">--</span>
+            <button type="button" class="link-muted" onclick="loadOverview(true)">刷新</button>
+            <button type="button" class="link-muted" onclick="logoutAdmin()">退出</button>
+            <a href="/" class="link-action">返回前台 ↗</a>
+          </div>
+        </div>
+
+        <nav class="tier-2" aria-label="后台分组导航">
+          <span class="subnav-label">后台</span>
+          <button type="button" class="nav-tab active" data-tab="overview" onclick="switchTab('overview')">数据概览</button>
+          <button type="button" class="nav-tab" data-tab="users" onclick="switchTab('users')">用户</button>
+          <button type="button" class="nav-tab" data-tab="ai" onclick="switchTab('ai')">AI 接口</button>
+          <button type="button" class="nav-tab" data-tab="system" onclick="switchTab('system')">系统</button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- Persistent Hero & 3x3 KPI Grid -->
+      <section aria-label="总体概况">
+        <div class="hero-eyebrow">私密入口 · 用户与量化服务管理</div>
+        <div class="hero-row">
+          <h1 class="hero-title">看见真实使用，<br />也守住数据边界。</h1>
+          <p class="hero-summary">
+            统一管理注册用户、开放协作/邀请码模式、平台公共 AI 体验接口、磁盘数据库与交易策略活跃度；后台不回显个人明文 API Key 与私密密码。
+          </p>
+        </div>
+
+        <div class="pine-banner">
+          <div>
+            <div class="pine-eyebrow">公开访问地址</div>
+            <div id="bannerSiteUrl" class="pine-url">https://zhitong888.ccwu.cc</div>
+            <div class="pine-sub">访客可直接访问并注册独立模拟盘账户；多用户资产、持仓、策略与个人 AI 端口均严格按账号隔离。</div>
+          </div>
+          <button type="button" class="btn-copy-pill" onclick="copyShareUrl()">复制地址</button>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-cell">
+            <div class="kpi-label">累计用户</div>
+            <div id="kpiUsers" class="kpi-value">--</div>
+            <div id="kpiUsersSub" class="kpi-note">--</div>
+          </div>
+          <div class="kpi-cell">
+            <div class="kpi-label">全站自选监控</div>
+            <div id="kpiWatch" class="kpi-value">--</div>
+            <div class="kpi-note">跨账户累计关注标的数</div>
+          </div>
+          <div class="kpi-cell">
+            <div class="kpi-label">累计持仓标的</div>
+            <div id="kpiPositions" class="kpi-value">--</div>
+            <div class="kpi-note">当前有效持仓明细记录</div>
+          </div>
+          <div class="kpi-cell">
+            <div class="kpi-label">累计委托单</div>
+            <div id="kpiOrders" class="kpi-value">--</div>
+            <div id="kpiOrdersSub" class="kpi-note">--</div>
+          </div>
+          <div class="kpi-cell">
+            <div class="kpi-label">自动盯盘策略</div>
+            <div id="kpiStrategies" class="kpi-value">--</div>
+            <div id="kpiStrategiesSub" class="kpi-note">--</div>
+          </div>
+          <div class="kpi-cell">
+            <div class="kpi-label">价格预警规则</div>
+            <div id="kpiAlerts" class="kpi-value">--</div>
+            <div id="kpiAlertsSub" class="kpi-note">--</div>
+          </div>
+          <div class="kpi-cell">
+            <div class="kpi-label">全站资金规模</div>
+            <div id="kpiCash" class="kpi-value">--</div>
+            <div id="kpiCashSub" class="kpi-note">--</div>
+          </div>
+          <div class="kpi-cell">
+            <div class="kpi-label">今日公共 AI 调用</div>
+            <div id="kpiAiCalls" class="kpi-value">--</div>
+            <div id="kpiAiSub" class="kpi-note">--</div>
+          </div>
+          <div class="kpi-cell">
+            <div class="kpi-label">行情缓存标的</div>
+            <div id="kpiQuotes" class="kpi-value">--</div>
+            <div id="kpiQuotesSub" class="kpi-note">--</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 1: 数据概览 -->
+      <section id="tab-overview">
+        <div class="section-card">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">服务器环境</div>
+              <h2 class="section-title">磁盘与数据库</h2>
+            </div>
+            <span id="diskStatusPill" class="pill pine">运行良好</span>
+          </div>
+          <div class="bar-list">
+            <div class="bar-row">
+              <span>磁盘占用</span>
+              <div class="bar-track"><div id="barDiskFill" class="bar-fill cinnabar" style="width:0%"></div></div>
+              <span id="barDiskVal" class="bar-val">--</span>
+            </div>
+            <div class="bar-row">
+              <span>剩余空间</span>
+              <div class="bar-track"><div id="barFreeFill" class="bar-fill" style="width:0%"></div></div>
+              <span id="barFreeVal" class="bar-val">--</span>
+            </div>
+            <div class="bar-row">
+              <span>SQLite 数据库</span>
+              <div class="bar-track"><div id="barDbFill" class="bar-fill ochre" style="width:0%"></div></div>
+              <span id="barDbVal" class="bar-val">--</span>
+            </div>
+          </div>
+          <div id="dbPathNote" class="footnote">数据库路径：--</div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">近 14 天</div>
+              <h2 class="section-title">用户与交易趋势</h2>
+            </div>
+            <div style="display:flex;gap:12px;">
+              <button type="button" class="link-action" onclick="loadOverview(true)">刷新数据</button>
+            </div>
+          </div>
+          <div class="legend-row">
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--pine);"></span>新增注册</span>
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--ochre);"></span>委托下单</span>
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--cinnabar);"></span>成交笔数</span>
+          </div>
+          <div id="trendRows" class="trend-rows"></div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="section-head">
+              <div>
+                <div class="section-eyebrow">策略构成</div>
+                <h2 class="section-title">自动盯盘分布</h2>
+              </div>
+              <span id="stratTotalPill" class="pill">0 个策略</span>
+            </div>
+            <div id="strategyDistBars" class="bar-list"></div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-head">
+              <div>
+                <div class="section-eyebrow">全站关注</div>
+                <h2 class="section-title">热门自选标的</h2>
+              </div>
+              <span class="pill">按自选人数</span>
+            </div>
+            <div id="topWatchedGrid" class="tile-grid-3"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: 用户 -->
+      <section id="tab-users" class="hidden">
+        <div class="section-card">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">用户管理</div>
+              <h2 class="section-title">用户概览与检索</h2>
+            </div>
+            <span id="userCountPill" class="pill pine">0 位用户</span>
+          </div>
+
+          <div class="toolbar">
+            <div class="chip-group" id="userFilterChips">
+              <button type="button" class="chip active" onclick="setUserFilter('ALL', this)">全部</button>
+              <button type="button" class="chip" onclick="setUserFilter('ADMIN', this)">管理员</button>
+              <button type="button" class="chip" onclick="setUserFilter('ACTIVE', this)">正常用户</button>
+              <button type="button" class="chip" onclick="setUserFilter('DISABLED', this)">已停用</button>
+            </div>
+            <input id="userSearchInput" class="field-input" style="max-width:260px;padding:7px 12px;" type="search" placeholder="搜索用户名、昵称或邀请码..." oninput="renderUsersTable()" />
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>用户名</th>
+                  <th>昵称</th>
+                  <th>角色</th>
+                  <th>可用现金</th>
+                  <th>持仓 / 委托 / 成交</th>
+                  <th>自选 / 策略</th>
+                  <th>个人 AI / 今日体验</th>
+                  <th>最近登录</th>
+                  <th>状态与操作</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
+          <div class="footnote">为保护用户隐私，后台仅展示账户汇总指标与模型配置状态，不展示用户个人明文 API Key。</div>
+        </div>
+      </section>
+
+      <!-- TAB 3: AI 接口 -->
+      <section id="tab-ai" class="hidden">
+        <div class="section-card">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">公共体验接口</div>
+              <h2 class="section-title">平台 AI 模型与额度配置</h2>
+            </div>
+            <span id="pubAiStatusPill" class="pill">未配置</span>
+          </div>
+
+          <div class="option-stack">
+            <div class="option-card selected" style="cursor:default;">
+              <div style="flex:1;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <div id="pubAiSummaryTitle" class="option-title">平台公共体验通道</div>
+                  <span id="pubAiKeyMaskPill" class="pill mono">Key: 未配置</span>
+                </div>
+                <div class="option-desc">
+                  当用户尚未填写个人 OpenAI 兼容 Key 时，自动消耗此处配置的平台公共大模型额度；若用户在前端「AI端口」填写了个人 Key，则优先使用个人 Key 且不占用平台额度。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <div class="chip-group">
+              <button type="button" class="chip" onclick="applyAiPreset('智瞳 DeepSeek 体验','https://api.deepseek.com/v1','deepseek-chat')">DeepSeek 预设</button>
+              <button type="button" class="chip" onclick="applyAiPreset('通义千问体验','https://dashscope.aliyuncs.com/compatible-mode/v1','qwen-plus')">通义千问预设</button>
+              <button type="button" class="chip" onclick="applyAiPreset('Moonshot Kimi','https://api.moonshot.cn/v1','moonshot-v1-8k')">Kimi 预设</button>
+              <button type="button" class="chip" onclick="applyAiPreset('本地 Ollama','http://127.0.0.1:11434/v1','qwen2.5:14b')">Ollama 本地</button>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label" for="pubAiProvider">前台显示名称</label>
+              <input id="pubAiProvider" class="field-input" placeholder="如 智瞳公共体验 AI" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pubAiDailyLimit">每用户每日体验次数（0 表示关闭体验）</label>
+              <input id="pubAiDailyLimit" class="field-input mono" type="number" min="0" max="1000" value="10" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pubAiBaseUrl">接口地址（Base URL）</label>
+              <input id="pubAiBaseUrl" class="field-input mono" placeholder="https://api.deepseek.com/v1" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pubAiModel">模型名称</label>
+              <input id="pubAiModel" class="field-input mono" placeholder="deepseek-chat" />
+            </div>
+            <div class="form-group full">
+              <label class="form-label" for="pubAiApiKey">API Key（留空表示保留当前已存密钥）</label>
+              <input id="pubAiApiKey" class="field-input mono" type="password" autocomplete="new-password" placeholder="sk-...（输入新密钥将覆盖原密钥；不修改请留空）" />
+            </div>
+          </div>
+
+          <div id="pubAiDiagResult" class="diag-box hidden"></div>
+
+          <div class="form-footer">
+            <label style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-muted);cursor:pointer;">
+              <input id="pubAiClearKey" type="checkbox" style="accent-color:var(--cinnabar);" />
+              <span>清除已保存的公共 API Key</span>
+            </label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button type="button" id="btnTestPubAi" class="btn-outline" onclick="testPublicAi()">测试接口连通性</button>
+              <button type="button" id="btnSavePubAi" class="btn-cinnabar btn-inline" onclick="savePublicAi()">保存公共 AI 设置</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: 系统 -->
+      <section id="tab-system" class="hidden">
+        <div class="section-card">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">注册安全</div>
+              <h2 class="section-title">注册与协作准入方式</h2>
+            </div>
+            <span id="regModePill" class="pill pine">开放协作模式</span>
+          </div>
+
+          <div class="option-stack">
+            <label id="optOpenReg" class="option-card selected" onclick="selectRegMode(false)">
+              <input type="radio" name="regMode" id="radioOpenReg" checked />
+              <div>
+                <div class="option-title">开放协作注册（推荐 · 无需邀请码）</div>
+                <div class="option-desc">任何访客输入用户名与密码即可立即注册独立模拟交易工作台，适合公开分享与多人协作体验。</div>
+              </div>
+            </label>
+            <label id="optInviteReg" class="option-card" onclick="selectRegMode(true)">
+              <input type="radio" name="regMode" id="radioInviteReg" />
+              <div>
+                <div class="option-title">需要邀请码准入</div>
+                <div class="option-desc">开启后，新用户注册必须填写下方生成并启用的有效邀请码，适合小范围定向内测。</div>
+              </div>
+            </label>
+          </div>
+
+          <div class="form-footer">
+            <span class="footnote" style="margin:0;">变更立即生效，无需重启服务。</span>
+            <button type="button" class="btn-cinnabar btn-inline" onclick="saveRegistrationMode()">保存注册设置</button>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">账号准入</div>
+              <h2 class="section-title">邀请码管理</h2>
+            </div>
+            <span id="inviteCountPill" class="pill">0 个邀请码</span>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label" for="invNote">用途备注</label>
+              <input id="invNote" class="field-input" placeholder="如：团队协作成员 / 测试批次" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="invCustom">自定义邀请码（选填，留空自动生成）</label>
+              <input id="invCustom" class="field-input mono" placeholder="如 TEAM2026" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="invMaxUses">可用次数（0 表示不限次）</label>
+              <input id="invMaxUses" class="field-input mono" type="number" min="0" max="10000" value="5" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="invCount">生成数量（1~20）</label>
+              <input id="invCount" class="field-input mono" type="number" min="1" max="20" value="1" />
+            </div>
+          </div>
+
+          <div class="form-footer">
+            <span class="footnote" style="margin:0;">邀请码即使在开放注册模式下也可保留备用，随时一键切换准入方式。</span>
+            <button type="button" class="btn-cinnabar btn-inline" onclick="createInvites()">生成邀请码</button>
+          </div>
+
+          <div class="table-wrap" style="margin-top:18px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>邀请码</th>
+                  <th>备注</th>
+                  <th>创建人</th>
+                  <th>使用进度</th>
+                  <th>状态</th>
+                  <th>创建时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="invitesTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">前台消息</div>
+              <h2 class="section-title">公告通知</h2>
+            </div>
+            <span id="annStatusPill" class="pill">当前关闭</span>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group full">
+              <label class="form-label" for="annTitle">公告标题</label>
+              <input id="annTitle" class="field-input" maxlength="100" placeholder="如：欢迎体验智瞳量化模拟盘协作终端" />
+            </div>
+            <div class="form-group full">
+              <label class="form-label" for="annContent">公告内容（<span id="annCharCount">0</span> / 600）</label>
+              <textarea id="annContent" class="field-input" maxlength="600" placeholder="输入面向前台所有用户的公告通知、版本更新说明或策略提示..." oninput="updateAnnCounter()"></textarea>
+            </div>
+          </div>
+
+          <div class="form-footer">
+            <label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input id="annEnabled" type="checkbox" style="accent-color:var(--cinnabar);width:16px;height:16px;" />
+              <span>在前台交易终端顶部展示此公告</span>
+            </label>
+            <button type="button" class="btn-cinnabar btn-inline" onclick="saveAnnouncement()">发布公告设置</button>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="section-head">
+              <div>
+                <div class="section-eyebrow">引擎能力</div>
+                <h2 class="section-title">核心量化模块</h2>
+              </div>
+              <span class="pill">开源架构</span>
+            </div>
+            <div class="tile-grid-3">
+              <div class="stone-tile"><div class="stone-num">T+1</div><div class="stone-label">五档深度撮合</div></div>
+              <div class="stone-tile"><div class="stone-num">5类</div><div class="stone-label">自动盯盘策略</div></div>
+              <div class="stone-tile"><div class="stone-num">250d</div><div class="stone-label">历史日线回测</div></div>
+              <div class="stone-tile"><div class="stone-num">10d</div><div class="stone-label">全市场涨停雷达</div></div>
+              <div class="stone-tile"><div class="stone-num">24h</div><div class="stone-label">仿真推演沙盘</div></div>
+              <div class="stone-tile"><div class="stone-num">WAL</div><div class="stone-label">多租户数据隔离</div></div>
+            </div>
+            <div class="footnote">
+              GitHub 公开协作仓库：<a href="https://github.com/ccccvince/zhitong888" target="_blank" rel="noopener" style="color:var(--cinnabar);text-decoration:underline;">ccccvince/zhitong888</a>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-head">
+              <div>
+                <div class="section-eyebrow">隐私与安全边界</div>
+                <h2 class="section-title">保存与统计口径</h2>
+              </div>
+              <span class="pill pine">最少信息</span>
+            </div>
+            <ul class="check-list">
+              <li><span class="check-mark">✓</span>用户密码使用随机盐 + scrypt 高强度单向哈希存储</li>
+              <li><span class="check-mark">✓</span>个人 AI API Key 与公共 AI Key 在所有接口响应中均做掩码脱敏</li>
+              <li><span class="check-mark">✓</span>全站持仓、订单、自选、策略与风控表严格按 user_id 隔离</li>
+              <li><span class="check-mark">✓</span>公网模式下默认拦截回环与云元数据 SSRF 探针请求</li>
+              <li><span class="check-mark">✓</span>管理会话采用 HttpOnly + SameSite=Lax 签名 Cookie 保护</li>
+              <li><span class="check-mark">✓</span>仅模拟盘撮合教学与策略回测，不触及任何实盘账户资产</li>
+            </ul>
+            <div id="uptimeFooter" class="footnote">服务启动时间：--</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      overview: null,
+      activeTab: "overview",
+      userFilter: "ALL",
+      inviteRequiredDraft: false,
+    };
+
+    const STRAT_NAMES = {
+      GRID: "网格低吸高抛",
+      BREAKOUT: "突破放量追涨",
+      TP_SL: "持仓止盈止损",
+      MA_CROSS: "MA 双均线金叉死叉",
+      MACD_CROSS: "MACD 趋势金叉死叉",
+    };
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
+      }[c]));
+    }
+
+    function showToast(msg, type = "info") {
+      const wrap = document.getElementById("toastWrap");
+      const el = document.createElement("div");
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      wrap.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = "0";
+        setTimeout(() => el.remove(), 220);
+      }, 3200);
+    }
+
+    async function api(url, opts = {}) {
+      const resp = await fetch(url, {
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+        ...opts,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data.detail || data.message || `请求失败 (${resp.status})`);
+      }
+      return data;
+    }
+
+    function fmtBytes(bytes) {
+      const b = Number(bytes || 0);
+      if (b <= 0) return "0 B";
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let idx = 0;
+      let val = b;
+      while (val >= 1024 && idx < units.length - 1) {
+        val /= 1024;
+        idx += 1;
+      }
+      return `${val >= 100 ? val.toFixed(0) : val.toFixed(1)} ${units[idx]}`;
+    }
+
+    function fmtMoney(v) {
+      const num = Number(v || 0);
+      if (num >= 1e8) return `${(num / 1e8).toFixed(2)}亿`;
+      if (num >= 1e4) return `${(num / 1e4).toFixed(1)}万`;
+      return `${num.toFixed(0)}`;
+    }
+
+    function fmtUptime(sec) {
+      const s = Math.max(0, Math.floor(Number(sec || 0)));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      return `${h} 小时 ${m} 分钟`;
+    }
+
+    function switchTab(tab) {
+      state.activeTab = tab;
+      document.querySelectorAll(".nav-tab").forEach((b) => {
+        b.classList.toggle("active", b.dataset.tab === tab);
+      });
+      ["overview", "users", "ai", "system"].forEach((t) => {
+        document.getElementById(`tab-${t}`)?.classList.toggle("hidden", t !== tab);
+      });
+    }
+
+    async function bootstrap() {
+      try {
+        const auth = await api("/api/auth/me");
+        if (!auth.auth_required) {
+          showLoginGate("当前处于免登录单机模式（AUTH_REQUIRED=false），请开启多用户鉴权后使用管理后台。");
+          return;
+        }
+        if (!auth.authenticated || !auth.user) {
+          showLoginGate("");
+          return;
+        }
+        if (auth.user.role !== "ADMIN") {
+          showLoginGate(`当前已登录普通账号「${auth.user.username}」，仅管理员角色可访问后台控制台；请在下方输入管理员凭据切换登录。`);
+          return;
+        }
+        await enterAdminShell(auth.user);
+      } catch (e) {
+        showLoginGate(e.message || "无法连接服务");
+      }
+    }
+
+    function showLoginGate(noticeMsg) {
+      document.getElementById("adminShell").classList.add("hidden");
+      document.getElementById("loginGate").classList.remove("hidden");
+      const notice = document.getElementById("nonAdminNotice");
+      if (noticeMsg) {
+        notice.textContent = noticeMsg;
+        notice.classList.remove("hidden");
+      } else {
+        notice.classList.add("hidden");
+      }
+    }
+
+    async function handleAdminLogin(evt) {
+      evt.preventDefault();
+      const username = document.getElementById("loginUsername").value.trim();
+      const password = document.getElementById("loginPassword").value;
+      const btn = document.getElementById("btnAdminLogin");
+      if (!username || !password) return;
+      btn.disabled = true;
+      btn.textContent = "正在验证...";
+      try {
+        const res = await api("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ username, password }),
+        });
+        if (!res.user || res.user.role !== "ADMIN") {
+          showLoginGate(`账号「${res.user?.username || username}」不是管理员角色（role=${res.user?.role || "USER"}）。`);
+          return;
+        }
+        document.getElementById("loginPassword").value = "";
+        await enterAdminShell(res.user);
+        showToast("已进入管理后台", "ok");
+      } catch (e) {
+        showLoginGate(e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "进入后台";
+      }
+    }
+
+    async function logoutAdmin() {
+      try {
+        await api("/api/auth/logout", { method: "POST" });
+      } catch (_) {}
+      showLoginGate("");
+      showToast("已退出管理会话", "info");
+    }
+
+    async function enterAdminShell(user) {
+      document.getElementById("loginGate").classList.add("hidden");
+      document.getElementById("adminShell").classList.remove("hidden");
+      document.getElementById("topAdminUser").textContent = `${user.username} · ADMIN`;
+      await loadOverview(false);
+    }
+
+    async function loadOverview(notify = false) {
+      const ov = await api("/api/admin/overview");
+      state.overview = ov;
+      renderAll(ov);
+      if (notify) showToast("后台数据已刷新", "ok");
+    }
+
+    function renderAll(ov) {
+      const t = ov.telemetry || {};
+      const c = t.counts || {};
+      const env = t.env_stats || {};
+      const pubAi = ov.public_ai || {};
+      const ann = ov.announcement || {};
+
+      // Top & Banner
+      const modeText = env.market_mode === "SIM" ? "24h 仿真推演模式" : "真实行情轮询中";
+      document.getElementById("topServiceLabel").textContent = `云端服务运行中 · ${modeText}`;
+      const siteUrl = ov.site_url || location.origin;
+      document.getElementById("bannerSiteUrl").textContent = siteUrl;
+
+      // 3x3 KPI Grid
+      document.getElementById("kpiUsers").textContent = c.users_total ?? 0;
+      document.getElementById("kpiUsersSub").textContent = `管理员 ${c.users_admin ?? 0} · 普通用户 ${c.users_regular ?? 0} · 停用 ${c.users_disabled ?? 0}`;
+      document.getElementById("kpiWatch").textContent = c.watchlist_total ?? 0;
+      document.getElementById("kpiPositions").textContent = c.positions_total ?? 0;
+      document.getElementById("kpiOrders").textContent = c.orders_total ?? 0;
+      document.getElementById("kpiOrdersSub").textContent = `累计成交 ${c.trades_total ?? 0} 笔`;
+      document.getElementById("kpiStrategies").textContent = c.strategies_enabled ?? 0;
+      document.getElementById("kpiStrategiesSub").textContent = `共创建 ${c.strategies_total ?? 0} 个自动策略`;
+      document.getElementById("kpiAlerts").textContent = c.alert_rules_total ?? 0;
+      document.getElementById("kpiAlertsSub").textContent = `累计触发 ${c.alert_events_total ?? 0} 次预警`;
+      document.getElementById("kpiCash").textContent = fmtMoney(c.total_cash_sum ?? 0);
+      document.getElementById("kpiCashSub").textContent = `初始总额 ${fmtMoney(c.total_initial_cash_sum ?? 0)}`;
+      document.getElementById("kpiAiCalls").textContent = c.ai_calls_today_total ?? 0;
+      document.getElementById("kpiAiSub").textContent = `个人自配 ${c.user_ai_configured_count ?? 0} 人 · 公共限额 ${pubAi.daily_limit ?? 0} 次/日`;
+      document.getElementById("kpiQuotes").textContent = env.quotes_cached ?? 0;
+      document.getElementById("kpiQuotesSub").textContent = `已在线 ${fmtUptime(env.uptime_seconds)}`;
+
+      // Disk & DB
+      const diskPct = Number(env.disk_used_pct || 0);
+      const diskPill = document.getElementById("diskStatusPill");
+      if (diskPct >= 85) {
+        diskPill.className = "pill warn";
+        diskPill.textContent = "磁盘空间紧张";
+      } else {
+        diskPill.className = "pill pine";
+        diskPill.textContent = "空间充足";
+      }
+      document.getElementById("barDiskFill").style.width = `${Math.min(100, diskPct)}%`;
+      document.getElementById("barDiskVal").textContent = `${diskPct.toFixed(1)}%`;
+      const freePct = env.disk_total_bytes > 0 ? Math.max(2, (env.disk_free_bytes / env.disk_total_bytes) * 100) : 0;
+      document.getElementById("barFreeFill").style.width = `${Math.min(100, freePct)}%`;
+      document.getElementById("barFreeVal").textContent = `${fmtBytes(env.disk_free_bytes)} / ${fmtBytes(env.disk_total_bytes)}`;
+      const dbPct = Math.min(100, Math.max(3, (Number(env.db_size_bytes || 0) / (50 * 1024 * 1024)) * 100));
+      document.getElementById("barDbFill").style.width = `${dbPct}%`;
+      document.getElementById("barDbVal").textContent = fmtBytes(env.db_size_bytes);
+      document.getElementById("dbPathNote").textContent = `数据库位置：${env.db_path || "--"}（WAL 并发模式已开启）。`;
+
+      // 14-day Trends
+      const trends = (t.trends_14d || []).filter((r) => r.new_users > 0 || r.orders > 0 || r.trades > 0);
+      const showRows = trends.length ? trends.slice(-10) : (t.trends_14d || []).slice(-7);
+      const maxUsers = Math.max(1, ...showRows.map((r) => r.new_users || 0));
+      const maxOrders = Math.max(1, ...showRows.map((r) => r.orders || 0));
+      const maxTrades = Math.max(1, ...showRows.map((r) => r.trades || 0));
+      document.getElementById("trendRows").innerHTML = showRows.map((r) => `
+        <div class="trend-row">
+          <span class="trend-date">${esc(r.label)}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${(r.new_users / maxUsers) * 100}%"></div></div>
+          <span class="trend-num">${r.new_users}</span>
+          <div class="bar-track"><div class="bar-fill ochre" style="width:${(r.orders / maxOrders) * 100}%"></div></div>
+          <span class="trend-num">${r.orders}</span>
+          <div class="bar-track"><div class="bar-fill cinnabar" style="width:${(r.trades / maxTrades) * 100}%"></div></div>
+          <span class="trend-num">${r.trades}</span>
+        </div>
+      `).join("") || `<div class="footnote">暂无近期交易或注册记录</div>`;
+
+      // Strategy Breakdown
+      const strats = t.strategy_breakdown || [];
+      const maxStrat = Math.max(1, ...strats.map((s) => s.count || 0));
+      document.getElementById("stratTotalPill").textContent = `${c.strategies_total ?? 0} 个策略`;
+      document.getElementById("strategyDistBars").innerHTML = strats.length
+        ? strats.map((s) => `
+            <div class="bar-row">
+              <span>${esc(STRAT_NAMES[s.strategy_type] || s.strategy_type)}</span>
+              <div class="bar-track"><div class="bar-fill cinnabar" style="width:${(s.count / maxStrat) * 100}%"></div></div>
+              <span class="bar-val">${s.count}</span>
+            </div>
+          `).join("")
+        : `<div class="footnote">尚未创建自动盯盘策略</div>`;
+
+      // Top Watched
+      const watches = t.top_watched || [];
+      document.getElementById("topWatchedGrid").innerHTML = watches.length
+        ? watches.map((w) => `
+            <div class="stone-tile" title="${esc(w.stock_code)} ${esc(w.short_name)}">
+              <div class="stone-num">${w.watchers}</div>
+              <div class="stone-label">${esc(w.short_name)} · ${esc(w.stock_code)}</div>
+            </div>
+          `).join("")
+        : `<div class="footnote">暂无自选关注数据</div>`;
+
+      // Users Tab
+      renderUsersTable();
+
+      // Public AI Tab
+      const aiPill = document.getElementById("pubAiStatusPill");
+      if (pubAi.configured) {
+        aiPill.className = "pill pine";
+        aiPill.textContent = "已配置 · 运行中";
+      } else {
+        aiPill.className = "pill";
+        aiPill.textContent = "未配置";
+      }
+      document.getElementById("pubAiSummaryTitle").textContent = `${pubAi.provider_name || "智瞳公共体验 AI"} · ${pubAi.model || "未设置模型"}`;
+      document.getElementById("pubAiKeyMaskPill").textContent = `Key: ${pubAi.has_api_key ? pubAi.api_key_masked : "未配置"}`;
+      document.getElementById("pubAiProvider").value = pubAi.provider_name || "智瞳公共体验 AI";
+      document.getElementById("pubAiBaseUrl").value = pubAi.base_url || "";
+      document.getElementById("pubAiModel").value = pubAi.model || "";
+      document.getElementById("pubAiDailyLimit").value = pubAi.daily_limit ?? 10;
+      document.getElementById("pubAiApiKey").value = "";
+      document.getElementById("pubAiClearKey").checked = false;
+
+      // System Tab: Registration & Invites & Announcement
+      selectRegMode(Boolean(ov.invite_required));
+      const regPill = document.getElementById("regModePill");
+      if (ov.invite_required) {
+        regPill.className = "pill warn";
+        regPill.textContent = "邀请码准入模式";
+      } else {
+        regPill.className = "pill pine";
+        regPill.textContent = "开放协作模式";
+      }
+
+      renderInvitesTable(ov.invites || []);
+
+      const annPill = document.getElementById("annStatusPill");
+      if (ann.enabled) {
+        annPill.className = "pill pine";
+        annPill.textContent = "当前展示中";
+      } else {
+        annPill.className = "pill";
+        annPill.textContent = "当前关闭";
+      }
+      document.getElementById("annTitle").value = ann.title || "";
+      document.getElementById("annContent").value = ann.content || "";
+      document.getElementById("annEnabled").checked = Boolean(ann.raw_enabled ?? ann.enabled);
+      updateAnnCounter();
+
+      document.getElementById("uptimeFooter").textContent =
+        `服务启动时间（北京时间）：${ov.started_at || "--"} · 已持续运行 ${fmtUptime(env.uptime_seconds)}`;
+    }
+
+    function setUserFilter(filter, btnEl) {
+      state.userFilter = filter;
+      document.querySelectorAll("#userFilterChips .chip").forEach((c) => c.classList.remove("active"));
+      btnEl?.classList.add("active");
+      renderUsersTable();
+    }
+
+    function renderUsersTable() {
+      const list = state.overview?.telemetry?.user_summaries || [];
+      const q = (document.getElementById("userSearchInput")?.value || "").trim().toLowerCase();
+      const filtered = list.filter((u) => {
+        if (state.userFilter === "ADMIN" && u.role !== "ADMIN") return false;
+        if (state.userFilter === "ACTIVE" && !u.is_active) return false;
+        if (state.userFilter === "DISABLED" && u.is_active) return false;
+        if (q) {
+          const hay = `${u.username} ${u.display_name} ${u.invite_code_used}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+      document.getElementById("userCountPill").textContent = `${filtered.length} / ${list.length} 位用户`;
+      const tbody = document.getElementById("usersTableBody");
+      if (!filtered.length) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--ink-light);padding:24px;">没有匹配的用户记录</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = filtered.map((u) => {
+        const isAdmin = u.role === "ADMIN";
+        const actionBtn = isAdmin
+          ? `<span class="footnote" style="margin:0;">受保护</span>`
+          : `<button type="button" class="btn-outline ${u.is_active ? "danger" : ""}" onclick="toggleUser('${esc(u.user_id)}', ${!u.is_active})">${u.is_active ? "停用" : "恢复"}</button>`;
+        return `
+          <tr>
+            <td class="mono"><strong>${esc(u.username)}</strong>${u.invite_code_used ? `<div style="font-size:11px;color:var(--ink-light);">码: ${esc(u.invite_code_used)}</div>` : ""}</td>
+            <td>${esc(u.display_name || u.username)}</td>
+            <td><span class="badge ${isAdmin ? "admin" : "user"}">${esc(u.role)}</span></td>
+            <td class="mono">¥${Number(u.cash || 0).toLocaleString("zh-CN", { maximumFractionDigits: 0 })}</td>
+            <td class="mono">${u.positions_count} / ${u.orders_count} / ${u.trades_count}</td>
+            <td class="mono">${u.watchlist_count} / ${u.strategies_active}(${u.strategies_total})</td>
+            <td>${u.has_own_ai ? `<span class="badge active">个人 Key</span>` : `<span class="badge user">公共/本地</span>`} · <span class="mono">${u.ai_calls_today}</span>次</td>
+            <td class="mono" style="font-size:11.5px;color:var(--ink-muted);">${esc(u.last_login_at || u.created_at || "--")}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="badge ${u.is_active ? "active" : "disabled"}">${u.is_active ? "正常" : "已停用"}</span>
+                ${actionBtn}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function toggleUser(userId, enabled) {
+      try {
+        await api(`/api/admin/users/${encodeURIComponent(userId)}/toggle`, {
+          method: "POST",
+          body: JSON.stringify({ enabled }),
+        });
+        showToast(enabled ? "已恢复用户访问权限" : "已停用该用户账号", "ok");
+        await loadOverview(false);
+      } catch (e) {
+        showToast(e.message, "err");
+      }
+    }
+
+    function applyAiPreset(provider, baseUrl, model) {
+      document.getElementById("pubAiProvider").value = provider;
+      document.getElementById("pubAiBaseUrl").value = baseUrl;
+      document.getElementById("pubAiModel").value = model;
+      showToast(`已填入 ${provider} 参数预设，请补充 API Key 后保存`, "info");
+    }
+
+    async function savePublicAi() {
+      const btn = document.getElementById("btnSavePubAi");
+      btn.disabled = true;
+      try {
+        await api("/api/admin/public-ai", {
+          method: "POST",
+          body: JSON.stringify({
+            provider_name: document.getElementById("pubAiProvider").value.trim() || "智瞳公共体验 AI",
+            base_url: document.getElementById("pubAiBaseUrl").value.trim(),
+            model: document.getElementById("pubAiModel").value.trim(),
+            api_key: document.getElementById("pubAiApiKey").value.trim(),
+            daily_limit: Number(document.getElementById("pubAiDailyLimit").value || 0),
+            clear_api_key: document.getElementById("pubAiClearKey").checked,
+          }),
+        });
+        showToast("平台公共 AI 配置已保存并立即生效", "ok");
+        await loadOverview(false);
+      } catch (e) {
+        showToast(e.message, "err");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function testPublicAi() {
+      const btn = document.getElementById("btnTestPubAi");
+      const box = document.getElementById("pubAiDiagResult");
+      btn.disabled = true;
+      btn.textContent = "正在探测连通性...";
+      box.classList.add("hidden");
+      try {
+        const res = await api("/api/admin/public-ai/test", {
+          method: "POST",
+          body: JSON.stringify({
+            base_url: document.getElementById("pubAiBaseUrl").value.trim(),
+            model: document.getElementById("pubAiModel").value.trim(),
+            api_key: document.getElementById("pubAiApiKey").value.trim(),
+          }),
+        });
+        box.className = `diag-box ${res.ok ? "ok" : "err"}`;
+        const modelsTxt = res.discovered_models?.length
+          ? ` | 可用模型示例：${res.discovered_models.slice(0, 5).join(", ")}`
+          : "";
+        box.textContent = `[${res.status}] ${res.message}${modelsTxt}`;
+        box.classList.remove("hidden");
+      } catch (e) {
+        box.className = "diag-box err";
+        box.textContent = e.message;
+        box.classList.remove("hidden");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "测试接口连通性";
+      }
+    }
+
+    function selectRegMode(inviteRequired) {
+      state.inviteRequiredDraft = Boolean(inviteRequired);
+      document.getElementById("radioOpenReg").checked = !inviteRequired;
+      document.getElementById("radioInviteReg").checked = Boolean(inviteRequired);
+      document.getElementById("optOpenReg").classList.toggle("selected", !inviteRequired);
+      document.getElementById("optInviteReg").classList.toggle("selected", Boolean(inviteRequired));
+    }
+
+    async function saveRegistrationMode() {
+      try {
+        await api("/api/admin/registration", {
+          method: "POST",
+          body: JSON.stringify({ invite_required: state.inviteRequiredDraft }),
+        });
+        showToast("注册模式已更新", "ok");
+        await loadOverview(false);
+      } catch (e) {
+        showToast(e.message, "err");
+      }
+    }
+
+    function renderInvitesTable(invites) {
+      document.getElementById("inviteCountPill").textContent = `${invites.length} 个邀请码`;
+      const tbody = document.getElementById("invitesTableBody");
+      if (!invites.length) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--ink-light);padding:20px;">暂无邀请码（当前开放注册模式无需邀请码）</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = invites.map((inv) => {
+        const limitTxt = inv.max_uses === 0 ? `${inv.used_count} / 不限` : `${inv.used_count} / ${inv.max_uses}`;
+        const enabled = Boolean(inv.enabled);
+        return `
+          <tr>
+            <td class="mono"><strong>${esc(inv.code)}</strong></td>
+            <td>${esc(inv.note || "--")}</td>
+            <td>${esc(inv.created_by || "--")}</td>
+            <td class="mono">${limitTxt}</td>
+            <td><span class="badge ${enabled ? "active" : "disabled"}">${enabled ? "可用" : "已停用"}</span></td>
+            <td class="mono" style="font-size:11.5px;color:var(--ink-muted);">${esc(inv.created_at || "--")}</td>
+            <td>
+              <div style="display:flex;gap:6px;">
+                <button type="button" class="btn-outline" onclick="copyText('${esc(inv.code)}')">复制</button>
+                <button type="button" class="btn-outline" onclick="toggleInvite('${esc(inv.code)}', ${!enabled})">${enabled ? "停用" : "启用"}</button>
+                <button type="button" class="btn-outline danger" onclick="deleteInvite('${esc(inv.code)}')">删除</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function createInvites() {
+      try {
+        const res = await api("/api/admin/invites", {
+          method: "POST",
+          body: JSON.stringify({
+            note: document.getElementById("invNote").value.trim(),
+            custom_code: document.getElementById("invCustom").value.trim(),
+            max_uses: Number(document.getElementById("invMaxUses").value || 0),
+            count: Number(document.getElementById("invCount").value || 1),
+          }),
+        });
+        document.getElementById("invCustom").value = "";
+        showToast(`已生成 ${res.created?.length || 1} 个邀请码`, "ok");
+        await loadOverview(false);
+      } catch (e) {
+        showToast(e.message, "err");
+      }
+    }
+
+    async function toggleInvite(code, enabled) {
+      try {
+        await api(`/api/admin/invites/${encodeURIComponent(code)}/toggle`, {
+          method: "POST",
+          body: JSON.stringify({ enabled }),
+        });
+        showToast(enabled ? `邀请码 ${code} 已启用` : `邀请码 ${code} 已停用`, "ok");
+        await loadOverview(false);
+      } catch (e) {
+        showToast(e.message, "err");
+      }
+    }
+
+    async function deleteInvite(code) {
+      try {
+        await api(`/api/admin/invites/${encodeURIComponent(code)}`, { method: "DELETE" });
+        showToast(`邀请码 ${code} 已删除`, "ok");
+        await loadOverview(false);
+      } catch (e) {
+        showToast(e.message, "err");
+      }
+    }
+
+    function updateAnnCounter() {
+      const val = document.getElementById("annContent")?.value || "";
+      document.getElementById("annCharCount").textContent = val.length;
+    }
+
+    async function saveAnnouncement() {
+      try {
+        await api("/api/admin/announcement", {
+          method: "POST",
+          body: JSON.stringify({
+            title: document.getElementById("annTitle").value.trim(),
+            content: document.getElementById("annContent").value.trim(),
+            enabled: document.getElementById("annEnabled").checked,
+          }),
+        });
+        showToast("公告设置已保存", "ok");
+        await loadOverview(false);
+      } catch (e) {
+        showToast(e.message, "err");
+      }
+    }
+
+    function copyText(txt) {
+      navigator.clipboard?.writeText(txt).then(
+        () => showToast(`已复制：${txt}`, "ok"),
+        () => showToast("浏览器不允许自动复制，请手动选择复制", "err")
+      );
+    }
+
+    function copyShareUrl() {
+      const txt = document.getElementById("bannerSiteUrl").textContent.trim();
+      copyText(txt);
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>

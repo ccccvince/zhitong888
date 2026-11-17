@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import secrets
+import shutil
 import sqlite3
 import threading
 import time
 import uuid
 from contextlib import contextmanager
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -961,3 +964,301 @@ class Database:
             if code not in merged or (merged[code] == code and name != code):
                 merged[code] = name
         return list(merged.items())
+
+    def get_public_ai_config(self) -> dict[str, Any]:
+        """Return merged platform trial AI config (DB system_settings overrides env defaults)."""
+        provider = self.get_system_setting("public_ai_provider", "").strip() or settings.public_ai_provider
+        base_url = self.get_system_setting("public_ai_base_url", "").strip() or settings.public_ai_base_url
+        model = self.get_system_setting("public_ai_model", "").strip() or settings.public_ai_model
+        stored_key = self.get_system_setting("public_ai_api_key", "")
+        if stored_key == "__CLEARED__":
+            api_key = ""
+        else:
+            api_key = stored_key.strip() or settings.public_ai_api_key
+        raw_limit = self.get_system_setting("public_ai_daily_limit", "").strip()
+        try:
+            daily_limit = max(0, int(raw_limit)) if raw_limit != "" else settings.public_ai_daily_limit
+        except ValueError:
+            daily_limit = settings.public_ai_daily_limit
+        return {
+            "provider_name": provider or "智瞳公共体验 AI",
+            "base_url": base_url,
+            "model": model,
+            "api_key": api_key,
+            "daily_limit": daily_limit,
+        }
+
+    def set_public_ai_config(
+        self,
+        *,
+        provider_name: str,
+        base_url: str,
+        model: str,
+        daily_limit: int,
+        api_key: str = "",
+        clear_api_key: bool = False,
+    ) -> dict[str, Any]:
+        """Persist platform trial AI config in system_settings."""
+        self.set_system_setting("public_ai_provider", (provider_name or "智瞳公共体验 AI").strip()[:60])
+        self.set_system_setting("public_ai_base_url", (base_url or "").strip()[:300])
+        self.set_system_setting("public_ai_model", (model or "").strip()[:120])
+        self.set_system_setting("public_ai_daily_limit", str(max(0, min(int(daily_limit), 1000))))
+        if clear_api_key:
+            self.set_system_setting("public_ai_api_key", "__CLEARED__")
+        elif (api_key or "").strip():
+            self.set_system_setting("public_ai_api_key", api_key.strip())
+        return self.get_public_ai_config()
+
+    def get_announcement(self) -> dict[str, Any]:
+        """Return foreground site announcement configuration."""
+        title = self.get_system_setting("site_announcement_title", "").strip()
+        content = self.get_system_setting("site_announcement_content", "").strip()
+        enabled = self.get_system_setting("site_announcement_enabled", "false") == "true"
+        updated_at = self.get_system_setting("site_announcement_updated_at", "")
+        return {
+            "title": title,
+            "content": content,
+            "enabled": enabled and bool(title or content),
+            "raw_enabled": enabled,
+            "updated_at": updated_at,
+        }
+
+    def set_announcement(self, *, title: str, content: str, enabled: bool) -> dict[str, Any]:
+        """Persist foreground site announcement configuration."""
+        self.set_system_setting("site_announcement_title", (title or "").strip()[:100])
+        self.set_system_setting("site_announcement_content", (content or "").strip()[:600])
+        self.set_system_setting("site_announcement_enabled", "true" if enabled else "false")
+        self.set_system_setting("site_announcement_updated_at", now_str())
+        return self.get_announcement()
+
+    def get_admin_telemetry(
+        self,
+        *,
+        quotes_cached: int = 0,
+        market_mode: str = "REAL",
+        uptime_seconds: float = 0.0,
+    ) -> dict[str, Any]:
+        """Aggregate platform-wide telemetry, 14-day trends, strategy breakdown, and per-user summaries."""
+        today = today_str()
+        now_dt = beijing_now()
+        days_14 = [(now_dt - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(13, -1, -1)]
+        day_set = set(days_14)
+
+        with self.connect() as conn:
+            u_rows = conn.execute(
+                """
+                SELECT user_id, username, display_name, role, is_active, invite_code_used,
+                       ai_calls_today, ai_calls_date, created_at, last_login_at
+                FROM users
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+            acct_rows = conn.execute(
+                "SELECT user_id, available_cash, frozen_cash, initial_cash FROM account"
+            ).fetchall()
+            pos_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS cnt FROM positions WHERE total_qty > 0 GROUP BY user_id"
+            ).fetchall()
+            ord_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS cnt FROM orders GROUP BY user_id"
+            ).fetchall()
+            trd_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS cnt FROM trades GROUP BY user_id"
+            ).fetchall()
+            watch_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS cnt FROM watchlist GROUP BY user_id"
+            ).fetchall()
+            strat_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS cnt, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS active_cnt FROM auto_strategies GROUP BY user_id"
+            ).fetchall()
+            ai_own_rows = conn.execute(
+                "SELECT user_id, enabled, api_key, base_url FROM ai_config"
+            ).fetchall()
+
+            strat_type_rows = conn.execute(
+                "SELECT strategy_type, COUNT(*) AS cnt FROM auto_strategies GROUP BY strategy_type ORDER BY cnt DESC"
+            ).fetchall()
+            top_watch_rows = conn.execute(
+                """
+                SELECT stock_code, MAX(short_name) AS short_name, COUNT(*) AS watchers
+                FROM watchlist
+                GROUP BY stock_code
+                ORDER BY watchers DESC, stock_code ASC
+                LIMIT 9
+                """
+            ).fetchall()
+
+            alert_rules_total = int(conn.execute("SELECT COUNT(*) FROM alert_rules").fetchone()[0])
+            alert_events_total = int(conn.execute("SELECT COUNT(*) FROM alert_events").fetchone()[0])
+
+            since_day = days_14[0]
+            ord_daily = conn.execute(
+                "SELECT substr(created_at, 1, 10) AS d, COUNT(*) AS cnt FROM orders WHERE substr(created_at, 1, 10) >= ? GROUP BY d",
+                (since_day,),
+            ).fetchall()
+            trd_daily = conn.execute(
+                "SELECT substr(created_at, 1, 10) AS d, COUNT(*) AS cnt FROM trades WHERE substr(created_at, 1, 10) >= ? GROUP BY d",
+                (since_day,),
+            ).fetchall()
+            usr_daily = conn.execute(
+                "SELECT substr(created_at, 1, 10) AS d, COUNT(*) AS cnt FROM users WHERE substr(created_at, 1, 10) >= ? GROUP BY d",
+                (since_day,),
+            ).fetchall()
+            alt_daily = conn.execute(
+                "SELECT substr(created_at, 1, 10) AS d, COUNT(*) AS cnt FROM alert_events WHERE substr(created_at, 1, 10) >= ? GROUP BY d",
+                (since_day,),
+            ).fetchall()
+
+        acct_map = {
+            str(r["user_id"]): {
+                "cash": float(r["available_cash"]) + float(r["frozen_cash"]),
+                "initial_cash": float(r["initial_cash"]),
+            }
+            for r in acct_rows
+        }
+        pos_map = {str(r["user_id"]): int(r["cnt"]) for r in pos_rows}
+        ord_map = {str(r["user_id"]): int(r["cnt"]) for r in ord_rows}
+        trd_map = {str(r["user_id"]): int(r["cnt"]) for r in trd_rows}
+        watch_map = {str(r["user_id"]): int(r["cnt"]) for r in watch_rows}
+        strat_map = {
+            str(r["user_id"]): {"total": int(r["cnt"] or 0), "active": int(r["active_cnt"] or 0)}
+            for r in strat_rows
+        }
+        ai_own_map = {
+            str(r["user_id"]): bool(r["enabled"]) and bool(str(r["api_key"] or "").strip() or str(r["base_url"] or "").strip())
+            for r in ai_own_rows
+        }
+
+        user_summaries: list[dict[str, Any]] = []
+        users_admin = 0
+        users_active = 0
+        users_disabled = 0
+        ai_calls_today_total = 0
+        user_ai_configured_count = 0
+
+        for u in u_rows:
+            uid = str(u["user_id"])
+            is_admin = u["role"] == "ADMIN"
+            is_act = bool(u["is_active"])
+            if is_admin:
+                users_admin += 1
+            if is_act:
+                users_active += 1
+            else:
+                users_disabled += 1
+            ai_today = int(u["ai_calls_today"] or 0) if u["ai_calls_date"] == today else 0
+            ai_calls_today_total += ai_today
+            has_own_ai = ai_own_map.get(uid, False)
+            if has_own_ai:
+                user_ai_configured_count += 1
+            acct = acct_map.get(uid, {"cash": 0.0, "initial_cash": 0.0})
+            st = strat_map.get(uid, {"total": 0, "active": 0})
+            user_summaries.append(
+                {
+                    "user_id": uid,
+                    "username": str(u["username"]),
+                    "display_name": str(u["display_name"] or u["username"]),
+                    "role": "ADMIN" if is_admin else "USER",
+                    "is_active": is_act,
+                    "invite_code_used": str(u["invite_code_used"] or ""),
+                    "cash": round(acct["cash"], 2),
+                    "positions_count": pos_map.get(uid, 0),
+                    "orders_count": ord_map.get(uid, 0),
+                    "trades_count": trd_map.get(uid, 0),
+                    "watchlist_count": watch_map.get(uid, 0),
+                    "strategies_total": st["total"],
+                    "strategies_active": st["active"],
+                    "has_own_ai": has_own_ai,
+                    "ai_calls_today": ai_today,
+                    "created_at": str(u["created_at"] or ""),
+                    "last_login_at": u["last_login_at"],
+                }
+            )
+
+        trend_map: dict[str, dict[str, Any]] = {
+            d: {"date": d, "label": d[5:], "new_users": 0, "orders": 0, "trades": 0, "alerts": 0}
+            for d in days_14
+        }
+        for r in ord_daily:
+            if r["d"] in day_set:
+                trend_map[r["d"]]["orders"] = int(r["cnt"])
+        for r in trd_daily:
+            if r["d"] in day_set:
+                trend_map[r["d"]]["trades"] = int(r["cnt"])
+        for r in usr_daily:
+            if r["d"] in day_set:
+                trend_map[r["d"]]["new_users"] = int(r["cnt"])
+        for r in alt_daily:
+            if r["d"] in day_set:
+                trend_map[r["d"]]["alerts"] = int(r["cnt"])
+
+        db_size_bytes = 0
+        try:
+            if self.db_path.exists():
+                db_size_bytes = int(os.path.getsize(self.db_path))
+                wal = Path(str(self.db_path) + "-wal")
+                if wal.exists():
+                    db_size_bytes += int(os.path.getsize(wal))
+        except OSError:
+            pass
+
+        disk_total = 0
+        disk_used = 0
+        disk_free = 0
+        disk_pct = 0.0
+        try:
+            target = self.db_path.parent if self.db_path.parent.exists() else Path(".")
+            usage = shutil.disk_usage(target)
+            disk_total = int(usage.total)
+            disk_used = int(usage.used)
+            disk_free = int(usage.free)
+            disk_pct = round((disk_used / disk_total) * 100.0, 1) if disk_total > 0 else 0.0
+        except OSError:
+            pass
+
+        return {
+            "counts": {
+                "users_total": len(u_rows),
+                "users_admin": users_admin,
+                "users_regular": max(0, len(u_rows) - users_admin),
+                "users_active": users_active,
+                "users_disabled": users_disabled,
+                "watchlist_total": sum(watch_map.values()),
+                "positions_total": sum(pos_map.values()),
+                "orders_total": sum(ord_map.values()),
+                "trades_total": sum(trd_map.values()),
+                "strategies_total": sum(v["total"] for v in strat_map.values()),
+                "strategies_enabled": sum(v["active"] for v in strat_map.values()),
+                "alert_rules_total": alert_rules_total,
+                "alert_events_total": alert_events_total,
+                "ai_calls_today_total": ai_calls_today_total,
+                "user_ai_configured_count": user_ai_configured_count,
+                "total_cash_sum": round(sum(a["cash"] for a in acct_map.values()), 2),
+                "total_initial_cash_sum": round(sum(a["initial_cash"] for a in acct_map.values()), 2),
+            },
+            "trends_14d": [trend_map[d] for d in days_14],
+            "strategy_breakdown": [
+                {"strategy_type": str(r["strategy_type"]), "count": int(r["cnt"])}
+                for r in strat_type_rows
+            ],
+            "top_watched": [
+                {
+                    "stock_code": str(r["stock_code"]),
+                    "short_name": str(r["short_name"] or r["stock_code"]),
+                    "watchers": int(r["watchers"]),
+                }
+                for r in top_watch_rows
+            ],
+            "user_summaries": user_summaries,
+            "env_stats": {
+                "db_path": str(self.db_path),
+                "db_size_bytes": db_size_bytes,
+                "disk_total_bytes": disk_total,
+                "disk_used_bytes": disk_used,
+                "disk_free_bytes": disk_free,
+                "disk_used_pct": disk_pct,
+                "uptime_seconds": round(max(0.0, float(uptime_seconds)), 1),
+                "quotes_cached": int(quotes_cached),
+                "market_mode": str(market_mode),
+            },
+        }

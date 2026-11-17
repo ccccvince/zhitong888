@@ -4,6 +4,7 @@ import asyncio
 import csv
 import io
 import os
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any, Optional
@@ -13,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.engine.ai_assistant import AIAssistantService, mask_api_key
+from app.engine.ai_assistant import AIAssistantService, mask_api_key, parse_ai_endpoint
 from app.engine.alert_engine import AlertEngine
 from app.engine.backtester import run_backtest
 from app.engine.clock import MarketClock
@@ -28,8 +29,12 @@ from app.models import (
     AIConfigUpdateRequest,
     AIConfigView,
     AIHealthCheckResponse,
+    AdminAnnouncementRequest,
     AdminEmailSettingsRequest,
     AdminEmailTestRequest,
+    AdminPublicAIConfigRequest,
+    AdminPublicAITestRequest,
+    AdminRegistrationModeRequest,
     AlertRuleRequest,
     AuthLoginRequest,
     AuthRegisterRequest,
@@ -122,6 +127,8 @@ class TradingAppContext:
         )
         self.user_clients: dict[str, set[WebSocket]] = {}
         self._tick_lock = asyncio.Lock()
+        self.started_monotonic = time.monotonic()
+        self.started_at = now_str()
 
         if settings.admin_username and settings.admin_password:
             self.db.ensure_bootstrap_admin(settings.admin_username, settings.admin_password)
@@ -430,15 +437,26 @@ class TradingAppContext:
             return last_payload
 
 
-def _to_auth_user_view(row: dict[str, Any]) -> AuthUserView:
+def _to_auth_user_view(row: dict[str, Any], db: Optional[Database] = None) -> AuthUserView:
     today = today_str()
     used = int(row.get("ai_calls_today") or 0) if row.get("ai_calls_date") == today else 0
-    has_trial = bool(
-        settings.public_ai_api_key
-        and settings.public_ai_base_url
-        and settings.public_ai_model
-        and settings.public_ai_daily_limit > 0
-    )
+    if db is not None:
+        pub_cfg = db.get_public_ai_config()
+        daily_limit = int(pub_cfg.get("daily_limit") or 0)
+        has_trial = bool(
+            pub_cfg.get("api_key")
+            and pub_cfg.get("base_url")
+            and pub_cfg.get("model")
+            and daily_limit > 0
+        )
+    else:
+        daily_limit = settings.public_ai_daily_limit
+        has_trial = bool(
+            settings.public_ai_api_key
+            and settings.public_ai_base_url
+            and settings.public_ai_model
+            and daily_limit > 0
+        )
     return AuthUserView(
         user_id=str(row["user_id"]),
         username=str(row["username"]),
@@ -449,7 +467,7 @@ def _to_auth_user_view(row: dict[str, Any]) -> AuthUserView:
         role="ADMIN" if row.get("role") == "ADMIN" else "USER",
         is_active=bool(row.get("is_active", 1)),
         ai_calls_today=used,
-        ai_daily_limit=settings.public_ai_daily_limit if has_trial else 0,
+        ai_daily_limit=daily_limit if has_trial else 0,
         created_at=str(row.get("created_at") or ""),
         last_login_at=row.get("last_login_at"),
     )
@@ -592,6 +610,17 @@ def create_app(
     async def index() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
 
+    @app.get("/admin")
+    async def admin_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "admin.html")
+
+    @app.get("/api/announcement")
+    async def public_announcement() -> dict[str, Any]:
+        ann = ctx.db.get_announcement()
+        if not ann["enabled"]:
+            return {"enabled": False, "title": "", "content": "", "updated_at": ann.get("updated_at", "")}
+        return ann
+
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
         return {
@@ -626,7 +655,7 @@ def create_app(
             invite_required=inv_req,
             email_verification_required=email_req,
             email_service_configured=email_cfg,
-            user=_to_auth_user_view(user),
+            user=_to_auth_user_view(user, ctx.db),
         )
 
     def _client_ip(request: Request) -> str:
@@ -719,7 +748,7 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         token = create_session_token(str(user["user_id"]), ctx.secret_key)
-        payload = {"ok": True, "user": _to_auth_user_view(user).model_dump()}
+        payload = {"ok": True, "user": _to_auth_user_view(user, ctx.db).model_dump()}
         resp = JSONResponse(content=payload)
         _set_cookie(resp, token, request)
         return resp
@@ -767,7 +796,7 @@ def create_app(
             updated = ctx.db.update_user_email(uid, alert_email_enabled=req.alert_email_enabled)
         else:
             raise HTTPException(status_code=400, detail="请提供要绑定的邮箱地址")
-        return {"ok": True, "user": _to_auth_user_view(updated).model_dump()}
+        return {"ok": True, "user": _to_auth_user_view(updated, ctx.db).model_dump()}
 
     @app.post("/api/auth/login")
     async def auth_login(req: AuthLoginRequest, request: Request) -> JSONResponse:
@@ -789,7 +818,7 @@ def create_app(
 
         ctx.login_limiter.clear(rate_key)
         token = create_session_token(str(user["user_id"]), ctx.secret_key)
-        payload = {"ok": True, "user": _to_auth_user_view(user).model_dump()}
+        payload = {"ok": True, "user": _to_auth_user_view(user, ctx.db).model_dump()}
         resp = JSONResponse(content=payload)
         _set_cookie(resp, token, request)
         return resp
@@ -817,9 +846,19 @@ def create_app(
     @app.get("/api/admin/overview")
     async def admin_overview(admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
         inv_req = ctx.is_invite_required()
+        quotes = ctx.feed.get_cached_quotes(MarketMode.REAL)
+        telemetry = ctx.db.get_admin_telemetry(
+            quotes_cached=len(quotes),
+            market_mode=MarketMode.REAL.value,
+            uptime_seconds=time.monotonic() - ctx.started_monotonic,
+        )
+        pub_ai = ctx.db.get_public_ai_config()
+        pub_key = str(pub_ai.get("api_key") or "")
         return {
             "open_register": not inv_req,
             "invite_required": inv_req,
+            "site_url": settings.site_url,
+            "started_at": ctx.started_at,
             "email_config": {
                 "configured": ctx.email_service.is_configured(),
                 "api_key_masked": mask_api_key(ctx.email_service.api_key),
@@ -827,9 +866,94 @@ def create_app(
                 "email_verification_required": ctx.is_email_verification_required(),
                 "site_url": settings.site_url,
             },
+            "public_ai": {
+                "provider_name": str(pub_ai.get("provider_name") or "智瞳公共体验 AI"),
+                "base_url": str(pub_ai.get("base_url") or ""),
+                "model": str(pub_ai.get("model") or ""),
+                "daily_limit": int(pub_ai.get("daily_limit") or 0),
+                "has_api_key": bool(pub_key),
+                "api_key_masked": mask_api_key(pub_key),
+                "configured": bool(
+                    pub_key
+                    and pub_ai.get("base_url")
+                    and pub_ai.get("model")
+                    and int(pub_ai.get("daily_limit") or 0) > 0
+                ),
+            },
+            "announcement": ctx.db.get_announcement(),
+            "telemetry": telemetry,
             "users": ctx.db.list_users(),
             "invites": ctx.db.list_invite_codes(),
         }
+
+    @app.post("/api/admin/registration")
+    async def admin_update_registration(
+        req: AdminRegistrationModeRequest, admin: dict[str, Any] = Depends(require_admin)
+    ) -> dict[str, Any]:
+        ctx.db.set_system_setting("invite_required", "true" if req.invite_required else "false")
+        ctx._explicit_invite_required = None
+        inv_req = ctx.is_invite_required()
+        return {"ok": True, "open_register": not inv_req, "invite_required": inv_req}
+
+    @app.post("/api/admin/public-ai")
+    async def admin_update_public_ai(
+        req: AdminPublicAIConfigRequest, admin: dict[str, Any] = Depends(require_admin)
+    ) -> dict[str, Any]:
+        clean_base = req.base_url.strip()
+        if clean_base:
+            try:
+                ep = parse_ai_endpoint(
+                    clean_base,
+                    allow_private=ctx.allow_private_ai_endpoints,
+                    resolve_dns=not ctx.allow_private_ai_endpoints,
+                )
+                clean_base = ep["base_url"]
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        saved = ctx.db.set_public_ai_config(
+            provider_name=req.provider_name,
+            base_url=clean_base,
+            model=req.model.strip(),
+            daily_limit=req.daily_limit,
+            api_key=req.api_key,
+            clear_api_key=req.clear_api_key,
+        )
+        pub_key = str(saved.get("api_key") or "")
+        return {
+            "ok": True,
+            "public_ai": {
+                "provider_name": saved["provider_name"],
+                "base_url": saved["base_url"],
+                "model": saved["model"],
+                "daily_limit": saved["daily_limit"],
+                "has_api_key": bool(pub_key),
+                "api_key_masked": mask_api_key(pub_key),
+                "configured": bool(
+                    pub_key and saved["base_url"] and saved["model"] and int(saved["daily_limit"]) > 0
+                ),
+            },
+        }
+
+    @app.post("/api/admin/public-ai/test")
+    async def admin_test_public_ai(
+        req: AdminPublicAITestRequest, admin: dict[str, Any] = Depends(require_admin)
+    ) -> dict[str, Any]:
+        try:
+            return await asyncio.to_thread(
+                ctx.ai_assistant.test_platform_ai,
+                base_url=req.base_url.strip(),
+                model=req.model.strip(),
+                api_key=req.api_key.strip(),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/admin/announcement")
+    async def admin_update_announcement(
+        req: AdminAnnouncementRequest, admin: dict[str, Any] = Depends(require_admin)
+    ) -> dict[str, Any]:
+        ann = ctx.db.set_announcement(title=req.title, content=req.content, enabled=req.enabled)
+        return {"ok": True, "announcement": ann}
 
     @app.post("/api/admin/email")
     async def admin_update_email_settings(

@@ -520,3 +520,28 @@ class InviteCodeRecord(BaseModel):
 class TogglePayload(BaseModel):
     enabled: bool
 
+
+class AdminRegistrationModeRequest(BaseModel):
+    invite_required: bool = False
+
+
+class AdminPublicAIConfigRequest(BaseModel):
+    provider_name: str = Field(default="智瞳公共体验 AI", min_length=1, max_length=60)
+    base_url: str = Field(default="", max_length=300)
+    model: str = Field(default="", max_length=120)
+    api_key: str = Field(default="", max_length=300)
+    daily_limit: int = Field(default=10, ge=0, le=1000)
+    clear_api_key: bool = False
+
+
+class AdminPublicAITestRequest(BaseModel):
+    base_url: str = Field(default="", max_length=300)
+    model: str = Field(default="", max_length=120)
+    api_key: str = Field(default="", max_length=300)
+
+
+class AdminAnnouncementRequest(BaseModel):
+    title: str = Field(default="", max_length=100)
+    content: str = Field(default="", max_length=600)
+    enabled: bool = False
+

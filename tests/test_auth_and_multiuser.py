@@ -415,3 +415,84 @@ def test_brevo_api_email_sending(monkeypatch) -> None:
     assert msg_id == "<brevo-test-123@smtp-relay.mailin.fr>"
     assert captured_payload["sender"]["email"] == "noreply@mydomain.com"
     assert captured_payload["to"] == [{"email": "user@qq.com"}]
+
+
+def test_admin_page_telemetry_public_ai_and_announcement(tmp_path: Path) -> None:
+    app = create_app(
+        db_path=tmp_path / "admin_page.db",
+        network_enabled=False,
+        enable_background_loop=False,
+        auth_required=True,
+        open_register=True,
+        email_verification_required=False,
+    )
+    app.state.ctx.db.ensure_bootstrap_admin("boss", "AdminPass123!")
+    with TestClient(app) as admin_cli, TestClient(app) as user_cli:
+        page = admin_cli.get("/admin")
+        assert page.status_code == 200
+        assert "智瞳量化 · 管理后台" in page.text
+
+        # Non-admin user cannot call new admin routes
+        reg = user_cli.post(
+            "/api/auth/register",
+            json={"username": "collab1", "password": "UserPass123!", "display_name": "协作成员"},
+        )
+        assert reg.status_code == 200
+        assert user_cli.post("/api/admin/registration", json={"invite_required": True}).status_code == 403
+        assert user_cli.post("/api/admin/announcement", json={"title": "t", "content": "c", "enabled": True}).status_code == 403
+
+        # Admin logs in and inspects telemetry overview
+        assert admin_cli.post("/api/auth/login", json={"username": "boss", "password": "AdminPass123!"}).status_code == 200
+        ov = admin_cli.get("/api/admin/overview")
+        assert ov.status_code == 200
+        data = ov.json()
+        assert data["telemetry"]["counts"]["users_total"] == 2
+        assert len(data["telemetry"]["trends_14d"]) == 14
+        assert any(u["username"] == "collab1" for u in data["telemetry"]["user_summaries"])
+
+        # Toggle invite mode via /api/admin/registration
+        t1 = admin_cli.post("/api/admin/registration", json={"invite_required": True})
+        assert t1.status_code == 200 and t1.json()["invite_required"] is True
+        t2 = admin_cli.post("/api/admin/registration", json={"invite_required": False})
+        assert t2.status_code == 200 and t2.json()["open_register"] is True
+
+        # SSRF blocked on public AI base URL when private endpoints disallowed
+        bad_ai = admin_cli.post(
+            "/api/admin/public-ai",
+            json={
+                "provider_name": "Inner",
+                "base_url": "http://127.0.0.1:11434/v1",
+                "model": "qwen2.5:7b",
+                "api_key": "sk-secret",
+                "daily_limit": 5,
+            },
+        )
+        assert bad_ai.status_code == 400
+
+        # Valid public AI saves masked key and updates user auth quota dynamically
+        ok_ai = admin_cli.post(
+            "/api/admin/public-ai",
+            json={
+                "provider_name": "智瞳体验",
+                "base_url": "https://api.deepseek.com/v1",
+                "model": "deepseek-chat",
+                "api_key": "sk-platform-demo-987654",
+                "daily_limit": 12,
+            },
+        )
+        assert ok_ai.status_code == 200
+        pub_ai = ok_ai.json()["public_ai"]
+        assert pub_ai["configured"] is True
+        assert "987654" not in pub_ai["api_key_masked"]
+        me_u = user_cli.get("/api/auth/me").json()
+        assert me_u["user"]["ai_daily_limit"] == 12
+
+        # Foreground announcement toggles cleanly
+        ann_res = admin_cli.post(
+            "/api/admin/announcement",
+            json={"title": "系统公告", "content": "欢迎多人协作体验", "enabled": True},
+        )
+        assert ann_res.status_code == 200
+        pub_ann = user_cli.get("/api/announcement").json()
+        assert pub_ann["enabled"] is True
+        assert pub_ann["title"] == "系统公告"
