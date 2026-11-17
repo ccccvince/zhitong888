@@ -1,0 +1,16 @@
+services:
+  zhitong:
+    build: .
+    image: zhitong-quant:latest
+    container_name: zhitong-quant
+    restart: always
+    ports:
+      - "8765:8765"
+    environment:
+      - TZ=Asia/Shanghai
+      - PAPER_TRADE_DB=/app/data/paper_trade.db
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups

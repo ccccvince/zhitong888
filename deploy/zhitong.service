@@ -1,0 +1,19 @@
+[Unit]
+Description=Zhitong Quant - A-Share Paper Trading & AI Terminal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/zhitong-trader
+EnvironmentFile=/opt/zhitong-trader/.env
+# Single worker required: poll_loop, market quote cache & WebSocket registry live in-process
+ExecStart=/opt/zhitong-trader/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
