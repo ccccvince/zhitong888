@@ -4,9 +4,12 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/badge/Tests-27%20Passed-brightgreen.svg)]()
+[![Live Site](https://img.shields.io/badge/在线体验-zhitong888.ccwu.cc-0ea5e9.svg)](https://zhitong888.ccwu.cc/)
 
+> **官方网站 / 在线体验**：[https://zhitong888.ccwu.cc/](https://zhitong888.ccwu.cc/)
+>
 > 基于 **FastAPI + WebSocket + SQLite(WAL) + 原生极简 Canvas 金融前端** 构建的轻量级、企业级 A 股智能盯盘、T+1 模拟撮合交易与量化投研副驾驶平台。
-> 支持多用户完全数据隔离、邮件验证码注册、通用 OpenAI 兼容大模型（DeepSeek / 通义千问 / Ollama 等）、5日涨停连板雷达及全套自动化策略与回测。
+> 支持多用户完全数据隔离、开放注册即开即用、通用 OpenAI 兼容大模型（DeepSeek / 通义千问 / Ollama 等）、5日涨停连板雷达及全套自动化策略与回测。
 
 ---
 
@@ -35,12 +38,10 @@
 - **全屏高度投研抽屉**：支持个股盘面诊断、涨停板题材复盘、账户体检复盘；AI 回复可附带**结构化参数草稿卡片（Action Drafts）**，用户点击即可一键填入下单、加预警或建回测。
 - **公网 SSRF 严格防护**：生产部署模式下自动拦截针对本机回环（127.0.0.1）和云服务器元数据地址（169.254.169.254）的请求。
 
-### 6. 多租户数据隔离与多通道邮件系统
-- **用户空间完全隔离**：每位用户独立拥有资金账户、持仓流水、自选池、风控规则、策略与个人专属 API Key。
-- **灵活的邮件与注册体系**：
-  - 支持 **Brevo（原 Sendinblue，每日 300 封免费）**、**Resend** 或**传统 SMTP 服务**。
-  - 支持邮箱验证码注册、邮箱密码找回重置、以及价格预警触发同步邮件提醒。
-  - 管理员可随时一键切换为邀请码内测制或开放注册制。
+### 6. 多用户数据隔离与多人协作模式
+- **用户空间完全隔离**：每位用户独立拥有资金账户、持仓流水、自选池、风控规则、策略与个人专属 API Key，支持多人同时在线独立模拟盘交易与策略推演。
+- **即开即用注册体验**：默认采用开放注册模式，新用户设置用户名与密码即可立即创建个人量化工作台（管理员也可按需开启邀请码内测模式）。
+- **社区多人协作共建**：项目采用公开（Public）仓库维护，支持团队成员与社区开发者通过 Issue、Fork 与 Pull Request 协同开发。
 
 ---
 
@@ -62,8 +63,8 @@
 │  │ T+1交收 / 五档 / 风控 │       │ 盘面诊断 / 策略草稿生成 │  │
 │  └───────────┬───────────┘       └───────────┬───────────┘  │
 │  ┌───────────▼───────────┐       ┌───────────▼───────────┐  │
-│  │ 行情数据采集 (adata)  │       │   邮件服务 (Brevo/Res)│  │
-│  │ 腾讯快照 / 东财涨停池 │       │ 验证码 / 密码重置 / 预警│  │
+│  │ 行情数据采集 (adata)  │       │ 策略回测与风控预警引擎 │  │
+│  │ 腾讯快照 / 东财涨停池 │       │ MA/MACD/网格/盘中告警 │  │
 │  └───────────────────────┘       └───────────────────────┘  │
 └──────────────────────────────▲──────────────────────────────┘
                                │ SQLite (WAL 模式并发优化)
@@ -134,12 +135,8 @@ docker compose logs -f
 | `TZ` | `Asia/Shanghai` | 强制锁定系统时区为北京时间（避免服务器默认 UTC 造成开收盘计算错误） |
 | `PAPER_TRADE_DB` | `data/paper_trade.db` | SQLite 数据库文件持久化路径 |
 | `AUTH_REQUIRED` | `true` | 是否启用多用户登录鉴权（设为 `false` 则为单机免登录模式） |
-| `INVITE_REQUIRED` | `false` | 是否开启邀请码注册（`false` 时任何人均可注册，`true` 时必须填邀请码） |
-| `EMAIL_VERIFICATION_REQUIRED`| `false` | 注册时是否强制要求输入邮箱验证码（测试阶段可先设为 `false`） |
-| `SITE_URL` | `https://your-domain.com` | 当前站点访问根地址（用于邮件验证码中的链接展示） |
-| `BREVO_API_KEY` | *(可选)* | Brevo 发信密钥（以 `xkeysib-...` 开头，每天免费 300 封，推荐） |
-| `RESEND_API_KEY`| *(可选)* | Resend 发信密钥（以 `re_...` 开头） |
-| `EMAIL_FROM` | `智瞳量化 <noreply@domain>` | 发信人显示地址（在邮件服务商完成域名验证后填写） |
+| `INVITE_REQUIRED` | `false` | 是否开启邀请码注册（`false` 时任何人均可直接注册，`true` 时需填邀请码） |
+| `SITE_URL` | `https://zhitong888.ccwu.cc/` | 当前站点访问根地址 |
 | `APP_SECRET_KEY`| *(必填随机字符串)* | 用于 Session 签名的防伪密钥 |
 | `ADMIN_USERNAME`| `admin` | 首次启动自动创建的管理员账号用户名 |
 | `ADMIN_PASSWORD`| *(必填强密码)* | 首次启动自动创建的管理员初始密码 |
@@ -149,11 +146,22 @@ docker compose logs -f
 
 ## 🧪 运行测试套件
 
-项目拥有完整的单元测试与集成测试覆盖，包含多用户隔离、SSRF 攻击拦截、T+1 撮合与风控、邮件分发等：
+项目拥有完整的单元测试与集成测试覆盖，包含多用户隔离、SSRF 攻击拦截、T+1 撮合与风控、行情策略与回测等：
 ```bash
 pytest -v
 ```
 *(目前测试套件共 27 项测试用例全部通过)*
+
+---
+
+## 🤝 多人协作开发
+
+本项目采用公开仓库协作模式，欢迎对量化策略、A 股行情或前端可视化感兴趣的开发者共同参与：
+
+1. **Fork 本仓库** 并克隆到本地：`git clone https://github.com/ccccvince/zhitong888.git`
+2. **创建特性分支**：`git checkout -b feat/your-feature`
+3. **运行测试确保通过**：`pytest -v`
+4. **提交变更并发起 Pull Request**，或在 [Issues](https://github.com/ccccvince/zhitong888/issues) 中提出改进建议与问题反馈。
 
 ---
 
