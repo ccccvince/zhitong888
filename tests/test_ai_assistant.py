@@ -440,3 +440,43 @@ def test_custom_ai_protocols_exact_url_and_headers(tmp_path: Path) -> None:
     assert "Responses OK" in res_resp.reply
     assert seen_reqs[-1][0] == "https://resp.example.com/v1/responses"
     assert "input" in seen_reqs[-1][2]
+
+    # 4. Auto-resolve display model name (e.g. DeepSeek-V4.1-Flash-1017 -> deepseek-flash) on HTTP 400
+    db.set_public_ai_config(
+        provider_name="DeepSeek",
+        api_format="openai_chat",
+        base_url="https://api.deepseek.com/v1",
+        model="DeepSeek-V4.1-Flash-1017",
+        daily_limit=0,
+        api_key="sk-ds-valid",
+        enabled=True,
+    )
+
+    def ds_alias_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "deepseek-flash"}, {"id": "deepseek-v4-pro"}]})
+        payload = json.loads(request.content.decode("utf-8"))
+        if payload.get("model") != "deepseek-flash":
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": f"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed {payload.get('model')}."
+                    }
+                },
+            )
+        return httpx.Response(
+            200,
+            json={"model": "deepseek-flash", "choices": [{"message": {"content": "**DeepSeek Flash 自动映射成功**"}}]},
+        )
+
+    svc_ds = AIAssistantService(
+        db,
+        tcp_probe=lambda h, p, t: (True, 8.1, "ok"),
+        http_client_factory=lambda t: httpx.Client(transport=httpx.MockTransport(ds_alias_handler), timeout=t),
+    )
+    res_ds = svc_ds.ask(AIAskRequest(task_type="CHAT", prompt="诊断"), state_payload)
+    assert res_ds.ok is True
+    assert res_ds.model_used == "deepseek-flash"
+    assert "DeepSeek Flash 自动映射成功" in res_ds.reply
+    assert db.get_public_ai_config()["model"] == "deepseek-flash"

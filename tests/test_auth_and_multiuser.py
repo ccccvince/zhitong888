@@ -569,7 +569,10 @@ def test_admin_page_telemetry_public_ai_and_announcement(tmp_path: Path) -> None
         assert stk_data["kind"] == "STOCK"
         assert stk_data["board"] == "主板"
         assert stk_data["quote"]["stock_code"] == "600519"
+        assert stk_data["quote"]["open"] > 0
         assert len(stk_data["daily"]) > 10
+        assert len(stk_data["mins"]) >= 1
+        assert stk_data["last_trade_date"] != ""
 
         # Foreground announcement toggles cleanly
         ann_res = admin_cli.post(

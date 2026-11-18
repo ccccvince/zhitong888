@@ -961,7 +961,7 @@
               <div>
                 <div class="quote-title" style="flex-wrap:wrap;">
                   <h2 id="curName" style="cursor:pointer;" onclick="openMarketDetailModal('STOCK', state.selectedCode)" title="点击查看个股档案与技术指标">--</h2>
-                  <span class="muted num" id="curCode">------</span>
+                  <span class="muted num" id="curCode" style="cursor:pointer;" onclick="openMarketDetailModal('STOCK', state.selectedCode)" title="点击查看个股档案">------</span>
                   <span class="pill" style="padding:2px 8px;font-size:11px;" id="curSource">--</span>
                   <button id="btnBannerDetail" class="pill-toggle" style="padding:2px 8px;font-size:11px;" onclick="openMarketDetailModal('STOCK', state.selectedCode)" title="查看个股行情档案、题材概念与多周期指标"><span data-ico="fileText" data-cls="ico-sm"></span><span>个股详情</span></button>
                   <button id="btnBannerBuyJump" class="pill-toggle" style="padding:2px 8px;font-size:11px;border-color:rgba(239,68,68,0.45);color:#fca5a5;" onclick="switchView('paper'); setOrderSide('BUY');" title="前往「模拟资金·买入」提交买入委托"><span>模拟买入 →</span></button>
@@ -969,7 +969,7 @@
                   <button id="btnBannerMeta" class="pill-toggle" style="padding:2px 8px;font-size:11px;" onclick="openWatchMetaModal()" title="设置自选分组与备注"><span data-ico="edit" data-cls="ico-sm"></span><span>分组/备注</span></button>
                   <button id="btnBannerAi" class="pill-toggle" style="padding:2px 8px;font-size:11px;border-color:rgba(245,158,11,0.4);color:#fbbf24;" onclick="askAiQuick('DIAGNOSE_STOCK')" title="在右侧大屏 AI 抽屉中诊断当前股票"><span data-ico="sparkles" data-cls="ico-sm ico-ai"></span><span>AI诊股</span></button>
                 </div>
-                <div class="quote-price-box" style="margin-top:4px;">
+                <div class="quote-price-box" style="margin-top:4px;cursor:pointer;" onclick="openMarketDetailModal('STOCK', state.selectedCode)" title="点击查看个股档案（含休市/收盘完整数据）">
                   <span class="quote-main-price num" id="curPrice">--</span>
                   <span class="num" id="curChange" style="font-size:14px;font-weight:600;">--</span>
                 </div>
@@ -1060,7 +1060,8 @@
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <span class="muted" style="font-size:12px;">当前交易标的:</span>
             <select id="paperTargetSelect" class="input" style="width:auto;min-width:190px;padding:5px 8px;" onchange="selectStock(this.value)"></select>
-            <span id="paperQuotePreview" class="pill num">--</span>
+            <span id="paperQuotePreview" class="pill num" style="cursor:pointer;" onclick="openMarketDetailModal('STOCK', state.selectedCode)" title="点击查看个股档案">--</span>
+            <button class="q-pill" onclick="openMarketDetailModal('STOCK', state.selectedCode)">个股详情</button>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -1467,13 +1468,14 @@
 
   <!-- Market Index & Stock Instant Detail Modal -->
   <div id="marketDetailModal" class="modal-backdrop" onclick="if(event.target===this)closeMarketDetailModal()">
-    <div class="modal" style="max-width:740px;max-height:92vh;overflow-y:auto;">
+    <div class="modal" style="max-width:760px;max-height:92vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
         <div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <h3 id="mdTitle" style="font-size:17px;font-weight:700;">--</h3>
             <span id="mdCode" class="muted num">--</span>
             <span id="mdBadge" class="board-tag">--</span>
+            <span id="mdSessionBadge" class="pill num" style="font-size:11px;padding:2px 8px;">--</span>
           </div>
           <div style="display:flex;align-items:baseline;gap:10px;margin-top:4px;flex-wrap:wrap;">
             <span id="mdPrice" class="num" style="font-size:24px;font-weight:800;">--</span>
@@ -1486,10 +1488,17 @@
 
       <div id="mdConcepts" class="quick-pills" style="margin-bottom:8px;display:none;"></div>
       <div id="mdMetricsGrid" class="detail-metrics-grid num"></div>
+      <div id="mdOrderBookWrap" class="num" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:rgba(15,23,36,0.55);font-size:11.5px;"></div>
 
       <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg-root);padding:8px 10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);margin-bottom:4px;flex-wrap:wrap;gap:6px;">
-          <span>近期日K线与均线 (MA5 / MA10 / MA20)</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);margin-bottom:6px;flex-wrap:wrap;gap:6px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span id="mdChartCaption">近期日K线与均线 (MA5 / MA10 / MA20)</span>
+            <div id="mdChartTabs" class="seg" style="display:none;">
+              <button type="button" id="mdTabDay" class="active" onclick="switchModalChartMode('DAY')">日K线</button>
+              <button type="button" id="mdTabMin" onclick="switchModalChartMode('MIN')">分时走势</button>
+            </div>
+          </div>
           <span id="mdTechSignal" class="num">--</span>
         </div>
         <div style="height:210px;width:100%;">
@@ -2208,7 +2217,7 @@
         const ztTag = state.limitUpCodes.has(item.stock_code) ? `<span class="watch-zt-badge" title="近期曾涨停">涨停</span>` : "";
         const noteLine = item.note ? `<div class="watch-note-line" title="${esc(item.note)}">${ico("edit", "ico-sm")}<span class="watch-note-text">${esc(item.note)}</span></div>` : "";
         return `
-          <div class="watch-row ${active}" onclick="selectStock('${esc(item.stock_code)}')">
+          <div class="watch-row ${active}" onclick="selectStock('${esc(item.stock_code)}'); openMarketDetailModal('STOCK', '${esc(item.stock_code)}')">
             <div style="min-width:0;">
               <div class="watch-name-line">
                 <span class="watch-name">${esc(item.short_name)}</span>
@@ -2583,7 +2592,7 @@
                 return `
                   <tr>
                     <td>${esc(o.created_at.slice(5))}</td>
-                    <td>${esc(o.short_name)} (${esc(o.stock_code)})</td>
+                    <td><a href="#" onclick="event.preventDefault();selectStock('${esc(o.stock_code)}');openMarketDetailModal('STOCK','${esc(o.stock_code)}')" style="color:var(--accent);text-decoration:none;">${esc(o.short_name)} (${esc(o.stock_code)})</a></td>
                     <td><span class="tag ${o.side === "BUY" ? "tag-buy" : "tag-sell"}">${o.side === "BUY" ? "买" : "卖"}</span></td>
                     <td>${fmt(o.price)}</td>
                     <td>${o.filled_quantity} / ${o.quantity}</td>
@@ -2610,7 +2619,7 @@
               ${trades.map((t) => `
                 <tr>
                   <td>${esc(t.created_at.slice(5))}</td>
-                  <td>${esc(t.short_name)} (${esc(t.stock_code)})</td>
+                  <td><a href="#" onclick="event.preventDefault();selectStock('${esc(t.stock_code)}');openMarketDetailModal('STOCK','${esc(t.stock_code)}')" style="color:var(--accent);text-decoration:none;">${esc(t.short_name)} (${esc(t.stock_code)})</a></td>
                   <td><span class="tag ${t.side === "BUY" ? "tag-buy" : "tag-sell"}">${t.side === "BUY" ? "买" : "卖"}</span></td>
                   <td>${fmt(t.price, 3)}</td>
                   <td>${t.quantity}</td>
@@ -3084,9 +3093,9 @@
               const cls = dirCls(it.latest_change_pct);
               const pctStr = `${it.latest_change_pct >= 0 ? "+" : ""}${Number(it.latest_change_pct).toFixed(2)}%`;
               return `
-                <tr>
+                <tr style="cursor:pointer;" onclick="selectStock('${esc(it.stock_code)}'); openMarketDetailModal('STOCK', '${esc(it.stock_code)}')">
                   <td>${esc(it.stock_code)}</td>
-                  <td><strong>${esc(it.short_name)}</strong><span class="board-tag">${esc(it.board)}</span></td>
+                  <td><strong style="color:var(--accent);">${esc(it.short_name)}</strong><span class="board-tag">${esc(it.board)}</span></td>
                   <td style="text-align:left;" class="muted">${esc(it.industry || "--")}</td>
                   <td class="${cls}"><strong>${fmt(it.last_price)}</strong></td>
                   <td class="${cls}">${pctStr}</td>
@@ -3095,7 +3104,7 @@
                   <td><span class="zt-badge">${it.limit_up_count}板</span></td>
                   <td>${it.max_consecutive_boards > 1 ? `<span class="zt-badge">${it.max_consecutive_boards}连板</span>` : `<span class="muted">首板</span>`}</td>
                   <td title="${esc(it.limit_up_dates.join(', '))}">${esc(it.last_limit_up_date)}</td>
-                  <td>
+                  <td onclick="event.stopPropagation()">
                     <div style="display:flex;gap:4px;justify-content:flex-end;">
                       <button class="q-pill" onclick="openMarketDetailModal('STOCK', '${esc(it.stock_code)}')">详情</button>
                       ${inWatch
@@ -3130,8 +3139,8 @@
       };
       document.getElementById("alertRulesList").innerHTML = rules.map((r) => `
         <div class="rule-item">
-          <div>
-            <strong>${esc(r.short_name)}</strong> <span class="muted num">${esc(r.stock_code)}</span>
+          <div style="cursor:pointer;" onclick="selectStock('${esc(r.stock_code)}'); openMarketDetailModal('STOCK', '${esc(r.stock_code)}')">
+            <strong style="color:var(--accent);">${esc(r.short_name)}</strong> <span class="muted num">${esc(r.stock_code)}</span>
             <span style="color:#fbbf24;margin-left:4px;">${condLbl[r.condition] || r.condition} ${r.threshold}</span>
             ${r.note ? `<span class="muted"> · ${esc(r.note)}</span>` : ""}
           </div>
@@ -3174,8 +3183,8 @@
         const sigTag = s.last_signal_tag ? ` · ${s.last_signal_tag}` : "";
         return `
           <div class="rule-item">
-            <div>
-              <div><strong>${esc(s.stock_code)}</strong> · ${nameMap[s.strategy_type] || s.strategy_type}</div>
+            <div style="cursor:pointer;" onclick="selectStock('${esc(s.stock_code)}'); openMarketDetailModal('STOCK', '${esc(s.stock_code)}')">
+              <div><strong style="color:var(--accent);">${esc(s.stock_code)}</strong> · ${nameMap[s.strategy_type] || s.strategy_type}</div>
               <div class="muted num" style="font-size:11px;">${esc(paramText)}${esc(sigTag)}</div>
             </div>
             <div style="display:flex;gap:4px;">
@@ -3253,8 +3262,118 @@
       } catch (_) {}
     }
 
+    let _modalDetailState = { kind: "STOCK", data: null, chartMode: "DAY" };
+
     function closeMarketDetailModal() {
       document.getElementById("marketDetailModal")?.classList.remove("open");
+    }
+
+    function switchModalChartMode(mode) {
+      _modalDetailState.chartMode = mode === "MIN" ? "MIN" : "DAY";
+      document.getElementById("mdTabDay")?.classList.toggle("active", _modalDetailState.chartMode === "DAY");
+      document.getElementById("mdTabMin")?.classList.toggle("active", _modalDetailState.chartMode === "MIN");
+      const cap = document.getElementById("mdChartCaption");
+      if (cap) {
+        cap.textContent = _modalDetailState.chartMode === "MIN"
+          ? "最近交易日分时走势 (价格 / 均价线)"
+          : "近期日K线与均线 (MA5 / MA10 / MA20)";
+      }
+      renderModalChart();
+    }
+
+    function renderModalChart() {
+      const d = _modalDetailState.data;
+      if (!d) return;
+      if (_modalDetailState.kind === "STOCK" && _modalDetailState.chartMode === "MIN") {
+        const snap = d.quote || {};
+        drawModalMinChart(d.mins || [], Number(snap.pre_close || snap.price || 0));
+      } else {
+        drawModalDailyChart(d.daily || []);
+      }
+    }
+
+    function drawModalMinChart(mins, preClose) {
+      const canvas = document.getElementById("mdChartCanvas");
+      if (!canvas) return;
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const w = Math.max(260, rect.width || 620);
+      const h = Math.max(180, rect.height || 210);
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      if (!mins || !mins.length) {
+        ctx.fillStyle = "#8b9bb4";
+        ctx.font = "12px sans-serif";
+        ctx.fillText("暂无分时走势数据", 16, 40);
+        return;
+      }
+
+      const pad = { l: 54, r: 52, t: 14, b: 22 };
+      const plotW = w - pad.l - pad.r;
+      const plotH = h - pad.t - pad.b;
+      const pre = preClose > 0 ? preClose : Number(mins[0].price || 10);
+      let maxDev = pre * 0.005;
+      for (const m of mins) {
+        maxDev = Math.max(maxDev, Math.abs(Number(m.price) - pre), Math.abs(Number(m.avg_price || m.price) - pre));
+      }
+      const minP = pre - maxDev * 1.12;
+      const maxP = pre + maxDev * 1.12;
+      const yOf = (p) => pad.t + ((maxP - p) / (maxP - minP)) * plotH;
+      const xOf = (i) => pad.l + (mins.length === 1 ? plotW / 2 : (i / (mins.length - 1)) * plotW);
+
+      ctx.strokeStyle = "rgba(35,48,69,0.75)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 2; i++) {
+        const y = pad.t + (plotH * i) / 2;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+      }
+      const yPre = yOf(pre);
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = "#64748b";
+      ctx.beginPath(); ctx.moveTo(pad.l, yPre); ctx.lineTo(w - pad.r, yPre); ctx.stroke();
+      ctx.restore();
+
+      ctx.font = "10.5px ui-monospace, monospace";
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#ef4444"; ctx.fillText(maxP.toFixed(2), pad.l - 6, pad.t + 8);
+      ctx.fillStyle = "#8b9bb4"; ctx.fillText(pre.toFixed(2), pad.l - 6, yPre + 3.5);
+      ctx.fillStyle = "#22c55e"; ctx.fillText(minP.toFixed(2), pad.l - 6, pad.t + plotH);
+
+      const topPct = pre > 0 ? ((maxP - pre) / pre) * 100 : 0;
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#ef4444"; ctx.fillText(`+${topPct.toFixed(2)}%`, w - pad.r + 4, pad.t + 8);
+      ctx.fillStyle = "#8b9bb4"; ctx.fillText("0.00%", w - pad.r + 4, yPre + 3.5);
+      ctx.fillStyle = "#22c55e"; ctx.fillText(`-${topPct.toFixed(2)}%`, w - pad.r + 4, pad.t + plotH);
+
+      ctx.beginPath();
+      mins.forEach((m, i) => {
+        const x = xOf(i), y = yOf(Number(m.price));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = "#60a5fa";
+      ctx.lineWidth = 1.7;
+      ctx.stroke();
+
+      ctx.beginPath();
+      mins.forEach((m, i) => {
+        const x = xOf(i), y = yOf(Number(m.avg_price || m.price));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = "#8b9bb4";
+      ctx.font = "10px ui-monospace, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(mins[0].time || "09:30", pad.l, h - 6);
+      ctx.textAlign = "right";
+      ctx.fillText(mins[mins.length - 1].time || "15:00", w - pad.r, h - 6);
     }
 
     function drawModalDailyChart(bars) {
@@ -3345,19 +3464,35 @@
     async function openMarketDetailModal(kind, id) {
       const modal = document.getElementById("marketDetailModal");
       if (!modal || !id) return;
+      _modalDetailState = { kind, data: null, chartMode: "DAY" };
       document.getElementById("mdTitle").textContent = "加载中...";
       document.getElementById("mdCode").textContent = id;
       document.getElementById("mdBadge").textContent = kind === "INDEX" ? "大盘指数" : "个股档案";
+      const sessBadge = document.getElementById("mdSessionBadge");
+      if (sessBadge) {
+        const sess = state.data?.session || {};
+        const isOpen = Boolean(sess.is_trading_hours);
+        sessBadge.textContent = isOpen ? "交易时段 · 实时行情" : `${sess.phase_label || "休市期间"} · 展示最近交易日完整数据`;
+      }
       document.getElementById("mdPrice").textContent = "--";
       document.getElementById("mdChange").textContent = "--";
       document.getElementById("mdUpdated").textContent = "";
       document.getElementById("mdConcepts").style.display = "none";
       document.getElementById("mdMetricsGrid").innerHTML = "";
+      const obWrap = document.getElementById("mdOrderBookWrap");
+      if (obWrap) { obWrap.style.display = "none"; obWrap.innerHTML = ""; }
+      const chartTabs = document.getElementById("mdChartTabs");
+      if (chartTabs) chartTabs.style.display = kind === "STOCK" ? "inline-flex" : "none";
+      document.getElementById("mdTabDay")?.classList.add("active");
+      document.getElementById("mdTabMin")?.classList.remove("active");
+      const cap = document.getElementById("mdChartCaption");
+      if (cap) cap.textContent = "近期日K线与均线 (MA5 / MA10 / MA20)";
       document.getElementById("mdActions").innerHTML = "";
       modal.classList.add("open");
 
       try {
         const d = await fetchMarketDetailData(kind, id);
+        _modalDetailState.data = d;
         const snap = d.snapshot || d.quote || {};
         const sum = d.summary || {};
         const cls = dirCls(snap.change ?? 0);
@@ -3372,7 +3507,8 @@
         const cEl = document.getElementById("mdChange");
         cEl.textContent = `${sign}${fmt(snap.change)} (${sign}${Number(snap.change_pct || 0).toFixed(2)}%)`;
         cEl.className = `num ${cls}`;
-        document.getElementById("mdUpdated").textContent = `更新: ${snap.updated_at || "--"}`;
+        const tradeDateNote = d.last_trade_date ? `交易日 ${d.last_trade_date} · ` : "";
+        document.getElementById("mdUpdated").textContent = `${tradeDateNote}更新: ${snap.updated_at || "--"}`;
 
         const cWrap = document.getElementById("mdConcepts");
         if (d.concepts?.length) {
@@ -3388,13 +3524,13 @@
         const cards = [
           { lbl: "今开 / 昨收", val: `${nzFmt(snap.open)} / ${nzFmt(snap.pre_close)}` },
           { lbl: "最高 / 最低", val: `${nzFmt(snap.high)} / ${nzFmt(snap.low)}` },
-          { lbl: "成交额", val: Number(snap.amount) > 0 ? fmtYi(snap.amount) : "--" },
+          { lbl: "成交额 / 成交量", val: `${Number(snap.amount) > 0 ? fmtYi(snap.amount) : "--"} / ${Number(snap.volume) > 0 ? fmtLots(snap.volume) : "--"}` },
           { lbl: "振幅", val: Number(snap.amplitude) > 0 ? `${Number(snap.amplitude).toFixed(2)}%` : "--" },
           { lbl: "近5日 / 20日涨跌", val: `${c5} / ${c20}` },
           { lbl: "MA5 / MA10 / MA20", val: `${sum.ma5 ?? "--"} / ${sum.ma10 ?? "--"} / ${sum.ma20 ?? "--"}` },
           ...(kind === "STOCK"
             ? [
-                { lbl: "换手率 / PE", val: `${Number(snap.turnover_ratio || 0).toFixed(2)}% / ${snap.pe_ratio > 0 ? snap.pe_ratio.toFixed(2) : "--"}` },
+                { lbl: "换手率 / PE", val: `${Number(snap.turnover_ratio || 0).toFixed(2)}% / ${snap.pe_ratio > 0 ? snap.pe_ratio.toFixed(2) : (snap.pe_ratio < 0 ? snap.pe_ratio.toFixed(2) + "(亏)" : "--")}` },
                 { lbl: "涨停 / 跌停价", val: `${fmt(snap.limit_up)} / ${fmt(snap.limit_down)}` },
               ]
             : [
@@ -3410,7 +3546,28 @@
         `).join("");
         document.getElementById("mdTechSignal").textContent = sum.macd_signal || "--";
 
-        requestAnimationFrame(() => drawModalDailyChart(d.daily || []));
+        if (kind === "STOCK" && obWrap) {
+          const asks = (snap.asks || []).slice(0, 5);
+          const bids = (snap.bids || []).slice(0, 5);
+          if (asks.length || bids.length) {
+            const fmtLvl = (lbl, lvl) => lvl
+              ? `<span style="display:inline-flex;gap:4px;"><span class="muted">${lbl}</span><strong class="${dirCls(lvl.price - (snap.pre_close || snap.price))}">${fmt(lvl.price)}</strong><span class="muted">${Math.round((lvl.volume || 0) / 100)}手</span></span>`
+              : `<span class="muted">${lbl} --</span>`;
+            obWrap.innerHTML = `
+              <div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;">
+                <span class="muted" style="font-weight:600;">五档买盘:</span>
+                ${[0, 1, 2, 3, 4].map((i) => fmtLvl(`买${i + 1}`, bids[i])).join("")}
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-top:4px;">
+                <span class="muted" style="font-weight:600;">五档卖盘:</span>
+                ${[0, 1, 2, 3, 4].map((i) => fmtLvl(`卖${i + 1}`, asks[i])).join("")}
+              </div>
+            `;
+            obWrap.style.display = "block";
+          }
+        }
+
+        requestAnimationFrame(() => renderModalChart());
 
         const actions = document.getElementById("mdActions");
         if (kind === "INDEX") {

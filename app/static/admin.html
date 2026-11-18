@@ -1026,7 +1026,7 @@
             <div class="chip-group">
               <button type="button" class="chip active" onclick="startCustomAiMode()">自定义通用接口（任意 URL / 模型）</button>
               <span style="font-size:11.5px;color:var(--ink-light);padding:0 4px;">可选示例预设：</span>
-              <button type="button" class="chip" onclick="applyAiPreset('DeepSeek','https://api.deepseek.com/v1','deepseek-chat','openai_chat')">DeepSeek</button>
+              <button type="button" class="chip" onclick="applyAiPreset('DeepSeek','https://api.deepseek.com/v1','deepseek-flash','openai_chat')">DeepSeek</button>
               <button type="button" class="chip" onclick="applyAiPreset('通义千问','https://dashscope.aliyuncs.com/compatible-mode/v1','qwen-plus','openai_chat')">通义千问</button>
               <button type="button" class="chip" onclick="applyAiPreset('Kimi','https://api.moonshot.cn/v1','moonshot-v1-8k','openai_chat')">Kimi</button>
               <button type="button" class="chip" onclick="applyAiPreset('Claude 官方/中转','https://api.anthropic.com/v1','claude-sonnet-4-5','anthropic_messages')">Claude Messages</button>
@@ -1059,7 +1059,7 @@
             </div>
             <div class="form-group">
               <label class="form-label" for="pubAiModel">模型 ID（支持任意自定义模型名，或先填地址后点“测试/拉取模型”）</label>
-              <input id="pubAiModel" class="field-input mono" placeholder="任意模型 ID，如 ds-4.1-flash / gpt-4o-mini / claude-sonnet-4-5" />
+              <input id="pubAiModel" class="field-input mono" placeholder="任意模型 ID，如 deepseek-flash / deepseek-v4-pro / claude-sonnet-4-5" />
             </div>
             <div class="form-group">
               <label class="form-label" for="pubAiDailyLimit">每用户每日体验次数（0 表示不限次数）</label>
@@ -1765,6 +1765,9 @@
           }),
         });
         box.className = `diag-box ${res.ok ? "ok" : "err"}`;
+        if (res.resolved_model && res.resolved_model !== document.getElementById("pubAiModel").value.trim()) {
+          document.getElementById("pubAiModel").value = res.resolved_model;
+        }
         const models = Array.isArray(res.discovered_models) ? res.discovered_models : [];
         let html = `<div><strong>[${esc(res.status)}]</strong> ${esc(res.message)}</div>`;
         if (res.chat_endpoint) {

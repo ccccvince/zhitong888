@@ -682,6 +682,69 @@ class AIAssistantService:
                 break
         return dedup
 
+    @staticmethod
+    def _resolve_fallback_model(
+        raw_model: str,
+        host: str = "",
+        discovered_models: Optional[list[str]] = None,
+        error_text: str = "",
+    ) -> str:
+        """Resolve a human display model name (e.g. DeepSeek-V4.1-Flash-1017) to an actual API model ID."""
+        clean = (raw_model or "").strip()
+        low = clean.lower()
+        candidates = list(discovered_models or [])
+
+        # Parse 'The supported API model names are a, b, but you passed ...' if present in upstream error
+        m_sup = re.search(
+            r"supported (?:api )?model names? (?:are|is)\s+([^.;(\n]+?)(?:,\s*but\b|\.\s|\s*\(|$)",
+            error_text or "",
+            re.IGNORECASE,
+        )
+        if m_sup:
+            for item in m_sup.group(1).split(","):
+                tok = item.strip().strip("'\"` ")
+                if tok and tok not in candidates:
+                    candidates.append(tok)
+
+        if clean in candidates:
+            return clean
+        for c in candidates:
+            if c.lower() == low:
+                return c
+
+        # Official DeepSeek display-name -> API slug normalization
+        if "deepseek" in (host or "").lower() or low.startswith(("deepseek", "ds-")):
+            if "flash" in low and (not candidates or "deepseek-flash" in candidates):
+                return "deepseek-flash"
+            if ("v4-pro" in low or "v4_pro" in low or low.endswith("-pro")) and (
+                not candidates or "deepseek-v4-pro" in candidates
+            ):
+                return "deepseek-v4-pro"
+            if ("r1" in low or "reasoner" in low) and (not candidates or "deepseek-reasoner" in candidates):
+                return "deepseek-reasoner"
+
+        if candidates:
+            req_tokens = [t for t in re.split(r"[^a-z0-9]+", low) if len(t) >= 2]
+            best_c = ""
+            best_score = 0
+            for c in candidates:
+                cl = c.lower()
+                score = sum(2 if tok in cl else 0 for tok in req_tokens)
+                if "flash" in low and "flash" in cl:
+                    score += 5
+                if "pro" in low and "pro" in cl:
+                    score += 5
+                if "chat" in low and "chat" in cl:
+                    score += 3
+                if score > best_score:
+                    best_score = score
+                    best_c = c
+            if best_c:
+                return best_c
+            return candidates[0]
+
+        return clean
+
     def _probe_endpoint(
         self,
         *,
@@ -724,9 +787,10 @@ class AIAssistantService:
                         message = f"端口可达 ({tcp_ms}ms)，/models 检测异常: {type(exc).__name__}"
 
                     if probe_chat and model_name.strip():
+                        eff_model = model_name.strip()
                         chat_headers, chat_body = self._build_llm_headers_and_body(
                             api_format=api_format,
-                            model_name=model_name,
+                            model_name=eff_model,
                             api_key=api_key,
                             sys_prompt="",
                             user_prompt="请回复 OK",
@@ -739,6 +803,30 @@ class AIAssistantService:
                             headers=chat_headers,
                             json=chat_body,
                         )
+                        if c_resp.status_code in (400, 404):
+                            first_err = self._extract_http_error(c_resp)
+                            alt_model = self._resolve_fallback_model(
+                                eff_model, ep["host"], discovered_models, first_err
+                            )
+                            if alt_model and alt_model != eff_model:
+                                retry_headers, retry_body = self._build_llm_headers_and_body(
+                                    api_format=api_format,
+                                    model_name=alt_model,
+                                    api_key=api_key,
+                                    sys_prompt="",
+                                    user_prompt="请回复 OK",
+                                    temperature=0.0,
+                                    max_tokens=16,
+                                    custom_headers=custom_headers,
+                                )
+                                retry_resp = client.post(
+                                    ep["chat_endpoint"],
+                                    headers=retry_headers,
+                                    json=retry_body,
+                                )
+                                if retry_resp.status_code == 200:
+                                    c_resp = retry_resp
+                                    eff_model = alt_model
                         http_status = c_resp.status_code
                         if c_resp.status_code == 200:
                             c_body = c_resp.json()
@@ -752,7 +840,12 @@ class AIAssistantService:
                             if has_struct:
                                 chat_probe_ok = True
                                 status = "OK"
-                                message = f"端口 {ep['host']}:{ep['port']} 连通正常，模型 {model_name} 响应成功 ({tcp_ms}ms)"
+                                alias_note = (
+                                    f"（已自动映射模型 ID: {eff_model}）"
+                                    if eff_model != model_name.strip()
+                                    else ""
+                                )
+                                message = f"端口 {ep['host']}:{ep['port']} 连通正常，模型 {eff_model} 响应成功 ({tcp_ms}ms){alias_note}"
                             else:
                                 chat_probe_ok = False
                                 status = "WARN"
@@ -825,12 +918,19 @@ class AIAssistantService:
             probe_chat=bool(model_name),
             custom_headers=eff_headers,
         )
+        resolved_model = model_name
+        m_alias = re.search(r"已自动映射模型 ID:\s*([^）\s]+)", message)
+        if m_alias:
+            resolved_model = m_alias.group(1).strip()
+            if saved.get("base_url") == ep["base_url"]:
+                self.db.set_system_setting("public_ai_model", resolved_model)
         return {
             "ok": status == "OK",
             "status": status,
             "message": message,
             "api_format": eff_fmt,
             "chat_endpoint": ep["chat_endpoint"],
+            "resolved_model": resolved_model,
             "tcp_reachable": tcp_ok,
             "tcp_latency_ms": tcp_ms,
             "http_status": http_status,
@@ -1009,6 +1109,50 @@ class AIAssistantService:
                     headers=headers,
                     json=req_body,
                 )
+                if resp.status_code in (400, 404):
+                    first_err = self._extract_http_error(resp)
+                    if "model" in first_err.lower() or "模型" in first_err:
+                        disc_models: list[str] = []
+                        alt_model = self._resolve_fallback_model(
+                            active_model, active_host, disc_models, first_err
+                        )
+                        if alt_model == active_model:
+                            try:
+                                m_ep = (
+                                    pub_ep["models_endpoint"]
+                                    if use_platform_trial
+                                    else view.models_endpoint
+                                )
+                                m_resp = client.get(m_ep, headers=headers)
+                                if m_resp.status_code == 200:
+                                    disc_models = self._extract_discovered_models(m_resp.json())
+                                    alt_model = self._resolve_fallback_model(
+                                        active_model, active_host, disc_models, first_err
+                                    )
+                            except Exception:
+                                pass
+                        if alt_model and alt_model != active_model:
+                            retry_headers, retry_body = self._build_llm_headers_and_body(
+                                api_format=active_format,
+                                model_name=alt_model,
+                                api_key=active_key,
+                                sys_prompt=sys_prompt,
+                                user_prompt=user_prompt,
+                                temperature=active_temp,
+                                max_tokens=active_max_tok,
+                                custom_headers=active_custom_headers,
+                            )
+                            retry_resp = client.post(
+                                active_chat_endpoint,
+                                headers=retry_headers,
+                                json=retry_body,
+                            )
+                            if retry_resp.status_code == 200:
+                                resp = retry_resp
+                                active_model = alt_model
+                                if use_platform_trial:
+                                    active_label = f"{pub_cfg.get('provider_name') or '平台 AI'} · {active_model}"
+                                    self.db.set_system_setting("public_ai_model", active_model)
         except Exception as exc:
             err_msg = (
                 f"连接 AI 服务失败 ({type(exc).__name__})"

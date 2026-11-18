@@ -264,12 +264,16 @@ def parse_tencent_payload(text: str) -> dict[str, QuoteSnapshot]:
         open_p = _safe_float(parts[5])
         if price <= 0 and pre_close > 0:
             price = pre_close
+        if open_p <= 0 and price > 0:
+            open_p = pre_close if pre_close > 0 else price
 
         vol_lots = _safe_float(parts[6])
         volume_shares = vol_lots * 100.0
 
-        high_p = _safe_float(parts[33], price)
-        low_p = _safe_float(parts[34], price)
+        high_raw = _safe_float(parts[33], price)
+        low_raw = _safe_float(parts[34], price)
+        high_p = high_raw if high_raw > 0 else price
+        low_p = low_raw if low_raw > 0 else price
         change = _safe_float(parts[31], round(price - pre_close, 2) if pre_close > 0 else 0.0)
         change_pct = _safe_float(
             parts[32],
@@ -692,6 +696,48 @@ class MarketDataManager:
         except Exception:
             bars = []
 
+        if not bars and self.network_enabled:
+            sym = to_tencent_symbol(stock_code)
+            try:
+                mresp = httpx.get(
+                    "https://web.ifzq.gtimg.cn/appstock/app/minute/query",
+                    params={"code": sym},
+                    timeout=3.5,
+                )
+                if mresp.status_code == 200:
+                    mdata = ((mresp.json().get("data") or {}).get(sym) or {}).get("data") or {}
+                    lines = mdata.get("data") or []
+                    prev_cum_lots = 0.0
+                    cum_amt = 0.0
+                    for ln in lines:
+                        parts_ln = str(ln).strip().split()
+                        if len(parts_ln) < 3:
+                            continue
+                        raw_t = parts_ln[0]
+                        hhmm = f"{raw_t[:2]}:{raw_t[2:4]}" if len(raw_t) >= 4 else raw_t
+                        px = _safe_float(parts_ln[1])
+                        cum_lots = _safe_float(parts_ln[2])
+                        if px <= 0:
+                            continue
+                        delta_shares = max(0.0, (cum_lots - prev_cum_lots) * 100.0)
+                        prev_cum_lots = cum_lots
+                        if len(parts_ln) >= 4 and _safe_float(parts_ln[3]) > 0:
+                            cum_amt = _safe_float(parts_ln[3])
+                        else:
+                            cum_amt += delta_shares * px
+                        tot_shares = cum_lots * 100.0
+                        avg_px = round(cum_amt / tot_shares, 2) if tot_shares > 0 else round(px, 2)
+                        bars.append(
+                            MinuteBar(
+                                time=hhmm,
+                                price=round(px, 2),
+                                avg_price=avg_px,
+                                volume=delta_shares,
+                            )
+                        )
+            except Exception:
+                bars = []
+
         if not bars:
             q = self.get_quote(stock_code)
             if q:
@@ -733,6 +779,44 @@ class MarketDataManager:
                         )
             except Exception:
                 raw_bars = []
+
+            if not raw_bars:
+                sym = to_tencent_symbol(stock_code)
+                try:
+                    kresp = httpx.get(
+                        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get",
+                        params={"param": f"{sym},day,,,{max(120, days + 60)},qfq"},
+                        timeout=4.0,
+                    )
+                    if kresp.status_code == 200:
+                        kdata = (kresp.json().get("data") or {}).get(sym) or {}
+                        rows = kdata.get("qfqday") or kdata.get("day") or []
+                        prev_c = 0.0
+                        for row in rows:
+                            if len(row) < 6:
+                                continue
+                            o = _safe_float(str(row[1]))
+                            c = _safe_float(str(row[2]))
+                            h = _safe_float(str(row[3]))
+                            l = _safe_float(str(row[4]))
+                            v = _safe_float(str(row[5])) * 100.0
+                            pct = round(((c - prev_c) / prev_c) * 100, 2) if prev_c > 0 else 0.0
+                            raw_bars.append(
+                                {
+                                    "trade_date": str(row[0]),
+                                    "open": round(o, 2),
+                                    "close": round(c, 2),
+                                    "high": round(h, 2),
+                                    "low": round(l, 2),
+                                    "volume": v,
+                                    "amount": round(v * c, 2),
+                                    "change_pct": pct,
+                                    "turnover_ratio": 0.0,
+                                }
+                            )
+                            prev_c = c
+                except Exception:
+                    raw_bars = []
 
         if not raw_bars:
             # Generate deterministic fallback bars with warmup history if offline so MA20 & MACD populate accurately
@@ -1330,13 +1414,14 @@ class MarketDataManager:
         }
 
     def fetch_stock_detail(self, stock_code: str, mode: MarketMode = MarketMode.REAL) -> dict:
-        """Fetch comprehensive quote, technical summary, concepts, and recent daily bars for a single stock."""
+        """Fetch comprehensive quote, technical summary, concepts, intraday mins, and daily bars (works 24/7 including market closed hours)."""
         code = stock_code.strip()
         q = self.get_quote(code, mode=mode)
         if not q:
             q = self.refresh_quotes([(code, code)], mode=mode).get(code) or self._build_seed_quote(code)
 
         daily = self.fetch_daily_kline(code, days=60)
+        mins = self.fetch_intraday_mins(code, mode=mode)
         concepts: list[str] = []
         now_ts = time.time()
         with self._lock:
@@ -1357,13 +1442,40 @@ class MarketDataManager:
             with self._lock:
                 self._concept_cache[code] = (now_ts, concepts)
 
+        q_dict = q.model_dump()
+        last_trade_date = ""
+        if daily:
+            last_bar = daily[-1]
+            last_trade_date = str(last_bar.get("trade_date") or "")
+            prev_bar_close = float(daily[-2]["close"]) if len(daily) >= 2 else float(last_bar.get("open") or q.pre_close)
+            # Backfill intraday fields from the latest completed trading day when off-hours/pre-open returns 0
+            if float(q_dict.get("open") or 0) <= 0:
+                q_dict["open"] = float(last_bar.get("open") or q.price)
+            if float(q_dict.get("high") or 0) <= 0:
+                q_dict["high"] = float(last_bar.get("high") or q.price)
+            if float(q_dict.get("low") or 0) <= 0:
+                q_dict["low"] = float(last_bar.get("low") or q.price)
+            if float(q_dict.get("volume") or 0) <= 0 and float(last_bar.get("volume") or 0) > 0:
+                q_dict["volume"] = float(last_bar["volume"])
+            if float(q_dict.get("amount") or 0) <= 0 and float(last_bar.get("amount") or 0) > 0:
+                q_dict["amount"] = float(last_bar["amount"])
+            if float(q_dict.get("turnover_ratio") or 0) <= 0 and float(last_bar.get("turnover_ratio") or 0) > 0:
+                q_dict["turnover_ratio"] = float(last_bar["turnover_ratio"])
+            if float(q_dict.get("amplitude") or 0) <= 0 and prev_bar_close > 0:
+                h_v = float(q_dict.get("high") or 0)
+                l_v = float(q_dict.get("low") or 0)
+                if h_v >= l_v > 0:
+                    q_dict["amplitude"] = round(((h_v - l_v) / prev_bar_close) * 100, 2)
+
         return {
             "kind": "STOCK",
             "stock_code": q.stock_code,
             "short_name": q.short_name,
             "board": classify_board(q.stock_code),
+            "last_trade_date": last_trade_date,
             "concepts": concepts,
-            "quote": q.model_dump(),
+            "quote": q_dict,
+            "mins": [m.model_dump() for m in mins],
             "daily": daily[-45:],
-            "summary": self._summarize_daily_technicals(daily, q.price),
+            "summary": self._summarize_daily_technicals(daily, float(q_dict.get("price") or q.price)),
         }
