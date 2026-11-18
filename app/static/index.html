@@ -131,6 +131,41 @@
       gap: 4px;
       flex-wrap: wrap;
     }
+    .search-wrap.global-search-wrap {
+      position: relative;
+      width: 190px;
+      flex: 0 1 190px;
+      min-width: 145px;
+      padding: 0;
+      border-bottom: none;
+    }
+    .global-search-input {
+      width: 100%;
+      background: var(--bg-root);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 5px 10px 5px 28px;
+      font-size: 12px;
+      color: var(--text-main);
+    }
+    .global-search-input:focus { border-color: var(--accent); }
+    .global-search-ico {
+      position: absolute;
+      left: 9px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      pointer-events: none;
+      display: inline-flex;
+    }
+    .search-wrap.global-search-wrap .search-dropdown {
+      left: auto;
+      right: 0;
+      width: 340px;
+      max-width: calc(100vw - 24px);
+      top: 34px;
+      z-index: 65;
+    }
     .topbar .btn { padding: 4px 8px; font-size: 11.5px; }
     .main-nav {
       display: inline-flex;
@@ -773,6 +808,8 @@
       .container { padding: 8px 10px 20px; }
       .main-nav { width: 100%; overflow-x: auto; }
       .main-nav-btn { flex: 1 0 auto; justify-content: center; padding: 5px 8px; font-size: 11.5px; }
+      .search-wrap.global-search-wrap { width: 100%; flex: 1 1 100%; }
+      .search-wrap.global-search-wrap .search-dropdown { left: 0; right: 0; width: 100%; max-width: 100%; }
       .topbar-controls { width: 100%; justify-content: flex-start; gap: 5px; }
       .index-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
       .index-chip { flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 10px; }
@@ -852,6 +889,12 @@
       <button id="navBtnStrategy" class="main-nav-btn" onclick="switchView('strategy')"><span data-ico="zap" data-cls="ico-sm"></span><span>策略·回测</span><span id="navStratCnt" class="nav-cnt num">0</span></button>
       <button id="navBtnSim" class="main-nav-btn" onclick="switchView('sim')"><span data-ico="play" data-cls="ico-sm"></span><span>仿真沙盘</span></button>
     </nav>
+
+    <div class="search-wrap global-search-wrap">
+      <span class="global-search-ico"><span data-ico="search" data-cls="ico-sm"></span></span>
+      <input id="globalStockSearch" class="global-search-input" placeholder="搜个股 代码/简称/拼音 (/)" autocomplete="off" />
+      <div id="globalSearchDropdown" class="search-dropdown"></div>
+    </div>
 
     <div class="topbar-controls">
       <span class="pill" title="WebSocket 实时推送状态">
@@ -3958,32 +4001,95 @@
       } catch (e) { showToast(e.message, "err"); }
     }
 
-    // Stock search autocomplete
-    let searchTimer = null;
-    document.getElementById("stockSearchInput").addEventListener("input", (e) => {
-      clearTimeout(searchTimer);
-      const q = e.target.value.trim();
-      if (!q) {
-        document.getElementById("searchDropdown").classList.remove("open");
-        return;
-      }
-      searchTimer = setTimeout(async () => {
+    // Unified stock search autocomplete (Global topbar + Watchlist pool)
+    function closeAllSearchDropdowns() {
+      document.getElementById("searchDropdown")?.classList.remove("open");
+      document.getElementById("globalSearchDropdown")?.classList.remove("open");
+    }
+
+    function openSearchDetail(code, ddId, inputId) {
+      closeAllSearchDropdowns();
+      const inp = document.getElementById(inputId);
+      if (inp) inp.blur();
+      openMarketDetailModal("STOCK", code);
+    }
+
+    async function addSearchStockToWatch(code, name, ddId, inputId) {
+      await addWatchlist(code, name);
+      closeAllSearchDropdowns();
+      const inp = document.getElementById(inputId);
+      if (inp) inp.value = "";
+    }
+
+    function renderSearchResults(dd, items, ddId, inputId) {
+      const watchSet = new Set((state.data?.watchlist || []).map((w) => w.stock_code));
+      dd.innerHTML = items.map((it) => {
+        const inWatch = watchSet.has(it.stock_code);
+        const mktTag = it.market ? `<span class="board-tag">${esc(it.market)}</span>` : "";
+        return `
+          <div class="search-item" onclick="openSearchDetail('${esc(it.stock_code)}', '${ddId}', '${inputId}')">
+            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              <strong>${esc(it.short_name)}</strong>
+              <span class="muted num">${esc(it.stock_code)}</span>${mktTag}
+            </span>
+            <span style="display:inline-flex;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+              <button class="q-pill" onclick="openSearchDetail('${esc(it.stock_code)}', '${ddId}', '${inputId}')">详情</button>
+              ${inWatch
+                ? `<span class="q-pill" style="opacity:0.65;cursor:default;">已自选</span>`
+                : `<button class="q-pill" style="border-color:rgba(239,68,68,0.45);color:#fca5a5;" onclick="addSearchStockToWatch('${esc(it.stock_code)}', '${esc(it.short_name)}', '${ddId}', '${inputId}')">+ 自选</button>`}
+            </span>
+          </div>
+        `;
+      }).join("") || '<div style="padding:10px;" class="muted">未找到匹配股票，可直接输入 6 位代码回车</div>';
+      dd.classList.add("open");
+    }
+
+    function bindStockSearchInput(inputId, dropdownId) {
+      const inp = document.getElementById(inputId);
+      const dd = document.getElementById(dropdownId);
+      if (!inp || !dd) return;
+      let timer = null;
+      const runQuery = async (openFirstOnHit = false) => {
+        const q = inp.value.trim();
+        if (!q) {
+          dd.classList.remove("open");
+          return;
+        }
         try {
           const items = await api(`/api/stocks/search?q=${encodeURIComponent(q)}`);
-          const dd = document.getElementById("searchDropdown");
-          dd.innerHTML = items.map((it) => `
-            <div class="search-item" onclick="addWatchlist('${esc(it.stock_code)}', '${esc(it.short_name)}')">
-              <span><strong>${esc(it.short_name)}</strong> <span class="muted num">${esc(it.stock_code)}</span></span>
-              <span class="q-pill">+ 自选</span>
-            </div>
-          `).join("") || '<div style="padding:10px;" class="muted">未找到匹配股票</div>';
-          dd.classList.add("open");
+          if (openFirstOnHit && items.length) {
+            openSearchDetail(items[0].stock_code, dropdownId, inputId);
+            return;
+          }
+          renderSearchResults(dd, items, dropdownId, inputId);
         } catch {}
-      }, 220);
-    });
+      };
+      inp.addEventListener("input", () => {
+        clearTimeout(timer);
+        if (!inp.value.trim()) {
+          dd.classList.remove("open");
+          return;
+        }
+        timer = setTimeout(() => runQuery(false), 200);
+      });
+      inp.addEventListener("focus", () => {
+        if (inp.value.trim()) runQuery(false);
+      });
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          clearTimeout(timer);
+          runQuery(true);
+        }
+      });
+    }
+
+    bindStockSearchInput("globalStockSearch", "globalSearchDropdown");
+    bindStockSearchInput("stockSearchInput", "searchDropdown");
+
     document.addEventListener("click", (e) => {
       if (!e.target.closest(".search-wrap")) {
-        document.getElementById("searchDropdown").classList.remove("open");
+        closeAllSearchDropdowns();
       }
     });
 
@@ -4630,7 +4736,8 @@
         closeAiConfigModal();
         closeAccountModal();
         closeAiDrawer();
-        document.getElementById("searchDropdown").classList.remove("open");
+        closeMarketDetailModal();
+        closeAllSearchDropdowns();
         if (document.activeElement && document.activeElement.tagName !== "BODY") {
           document.activeElement.blur();
         }
@@ -4644,7 +4751,7 @@
 
       if (e.key === "/") {
         e.preventDefault();
-        document.getElementById("stockSearchInput")?.focus();
+        document.getElementById("globalStockSearch")?.focus();
       } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         const wl = getFilteredWatchlist();
         if (!wl.length) return;

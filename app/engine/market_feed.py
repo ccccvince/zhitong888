@@ -815,7 +815,7 @@ class MarketDataManager:
                         segs = entry.split("~")
                         if len(segs) >= 5:
                             mkt, code, name, _, kind = segs[:5]
-                            if mkt in ("sh", "sz", "bj") and len(code) == 6 and "GP-A" in kind:
+                            if mkt in ("sh", "sz", "bj") and len(code) == 6 and code.isdigit() and "GP" in kind:
                                 if code not in seen:
                                     seen.add(code)
                                     results.append(
