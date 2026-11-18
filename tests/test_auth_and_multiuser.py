@@ -478,14 +478,40 @@ def test_admin_page_telemetry_public_ai_and_announcement(tmp_path: Path) -> None
                 "model": "deepseek-chat",
                 "api_key": "sk-platform-demo-987654",
                 "daily_limit": 12,
+                "temperature": 0.4,
+                "max_tokens": 2048,
+                "timeout_sec": 45,
+                "system_prompt": "严格按A股T+1分析",
             },
         )
         assert ok_ai.status_code == 200
         pub_ai = ok_ai.json()["public_ai"]
         assert pub_ai["configured"] is True
+        assert pub_ai["temperature"] == 0.4
+        assert pub_ai["max_tokens"] == 2048
+        assert pub_ai["timeout_sec"] == 45
+        assert "T+1" in pub_ai["system_prompt"]
         assert "987654" not in pub_ai["api_key_masked"]
         me_u = user_cli.get("/api/auth/me").json()
         assert me_u["user"]["ai_daily_limit"] == 12
+
+        # Index & stock instant detail endpoints
+        idx_res = user_cli.get("/api/indices/sh000001/detail")
+        assert idx_res.status_code == 200
+        idx_data = idx_res.json()
+        assert idx_data["kind"] == "INDEX"
+        assert idx_data["name"] == "上证指数"
+        assert len(idx_data["daily"]) > 10
+        assert idx_data["summary"]["ma5"] is not None
+        assert user_cli.get("/api/indices/unknown999/detail").status_code == 404
+
+        stk_res = user_cli.get("/api/stocks/600519/detail")
+        assert stk_res.status_code == 200
+        stk_data = stk_res.json()
+        assert stk_data["kind"] == "STOCK"
+        assert stk_data["board"] == "主板"
+        assert stk_data["quote"]["stock_code"] == "600519"
+        assert len(stk_data["daily"]) > 10
 
         # Foreground announcement toggles cleanly
         ann_res = admin_cli.post(

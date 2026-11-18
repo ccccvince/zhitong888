@@ -666,7 +666,7 @@ class AIAssistantService:
                 active_key = str(pub_cfg["api_key"])
                 active_label = f"{pub_cfg.get('provider_name') or '平台体验 AI'} · {active_model}"
                 trial_warnings.append(
-                    f"使用平台体验额度（今日剩余 {rem}/{trial_limit} 次）；可在「AI端口」配置个人 Key 不限次使用。"
+                    f"使用平台 AI 通道（今日剩余 {rem}/{trial_limit} 次）"
                 )
             else:
                 fallback_reply, drafts = self._build_local_fallback(
@@ -680,13 +680,13 @@ class AIAssistantService:
                 return AIAskResponse(
                     ok=True,
                     source="local_rule_fallback",
-                    model_used="本地量化指标摘要 (体验额度已用完)",
+                    model_used="本地量化指标摘要 (今日额度已用完)",
                     endpoint_label="今日体验额度已用完 · 本地引擎",
                     latency_ms=round((time.perf_counter() - t0) * 1000.0, 2),
                     reply=fallback_reply,
                     drafts=drafts,
                     warnings=[
-                        f"今日平台免费 AI 体验额度（{trial_limit} 次/天）已用完，已降级为本地规则摘要；点击「AI端口」填入你自己的 API Key 即可继续大模型对话。"
+                        f"今日平台免费 AI 体验额度（{trial_limit} 次/天）已用完，已降级为本地量化规则摘要。"
                     ],
                     created_at=now_str(),
                 )
@@ -702,24 +702,30 @@ class AIAssistantService:
             return AIAskResponse(
                 ok=True,
                 source="local_rule_fallback",
-                model_used="本地量化指标摘要 (未启用外部AI)",
-                endpoint_label=f"未启用 · 默认配置 {endpoint_label}",
+                model_used="本地量化指标摘要 (未配置平台 AI)",
+                endpoint_label="本地量化引擎",
                 latency_ms=round((time.perf_counter() - t0) * 1000.0, 2),
                 reply=fallback_reply,
                 drafts=drafts,
                 warnings=[
-                    "当前未启用个人外部 AI 端口，以上为基于本地行情与指标规则的摘要；点击顶部「AI端口」保存并启用接口即可切换大模型推理。"
+                    "当前后台尚未配置平台 AI 接口，以上为基于本地行情与指标规则生成的量化摘要。"
                 ],
                 created_at=now_str(),
             )
 
-        sys_prompt = (view.system_prompt if not use_platform_trial else "") or DEFAULT_AI_SYSTEM_PROMPT
+        active_temp = float(pub_cfg.get("temperature", 0.3)) if use_platform_trial else float(view.temperature)
+        active_max_tok = int(pub_cfg.get("max_tokens", 1500)) if use_platform_trial else int(view.max_tokens)
+        active_timeout = int(pub_cfg.get("timeout_sec", 30)) if use_platform_trial else int(view.timeout_sec)
+        sys_prompt = (
+            (str(pub_cfg.get("system_prompt") or "") if use_platform_trial else view.system_prompt)
+            or DEFAULT_AI_SYSTEM_PROMPT
+        )
         headers = {"Content-Type": "application/json"}
         if active_key:
             headers["Authorization"] = f"Bearer {active_key}"
 
         try:
-            with self._open_client(active_host, float(view.timeout_sec)) as client:
+            with self._open_client(active_host, float(active_timeout)) as client:
                 resp = client.post(
                     active_chat_endpoint,
                     headers=headers,
@@ -729,8 +735,8 @@ class AIAssistantService:
                             {"role": "system", "content": sys_prompt},
                             {"role": "user", "content": user_prompt},
                         ],
-                        "temperature": view.temperature,
-                        "max_tokens": view.max_tokens,
+                        "temperature": active_temp,
+                        "max_tokens": active_max_tok,
                     },
                 )
         except Exception as exc:
@@ -745,7 +751,9 @@ class AIAssistantService:
                 model_used=active_model,
                 endpoint_label=active_label,
                 latency_ms=round((time.perf_counter() - t0) * 1000.0, 2),
-                reply=f"**AI 接口调用失败**：{err_msg}\n\n请检查顶部 **「AI端口」** 接口地址、密钥或网络连接。",
+                reply=(
+                    f"**AI 接口调用失败**：{err_msg}\n\n请管理员在后台 **/admin → AI 接口** 检查服务配置与连通性。"
+                ),
                 drafts=[],
                 warnings=[err_msg],
                 created_at=now_str(),

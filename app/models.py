@@ -530,7 +530,11 @@ class AdminPublicAIConfigRequest(BaseModel):
     base_url: str = Field(default="", max_length=300)
     model: str = Field(default="", max_length=120)
     api_key: str = Field(default="", max_length=300)
-    daily_limit: int = Field(default=10, ge=0, le=1000)
+    daily_limit: int = Field(default=10, ge=0, le=10000)
+    temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=1500, ge=128, le=8192)
+    timeout_sec: int = Field(default=30, ge=3, le=180)
+    system_prompt: str = Field(default="", max_length=4000)
     clear_api_key: bool = False
 
 

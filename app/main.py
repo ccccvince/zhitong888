@@ -871,6 +871,10 @@ def create_app(
                 "base_url": str(pub_ai.get("base_url") or ""),
                 "model": str(pub_ai.get("model") or ""),
                 "daily_limit": int(pub_ai.get("daily_limit") or 0),
+                "temperature": float(pub_ai.get("temperature") if pub_ai.get("temperature") is not None else 0.3),
+                "max_tokens": int(pub_ai.get("max_tokens") or 1500),
+                "timeout_sec": int(pub_ai.get("timeout_sec") or 30),
+                "system_prompt": str(pub_ai.get("system_prompt") or ""),
                 "has_api_key": bool(pub_key),
                 "api_key_masked": mask_api_key(pub_key),
                 "configured": bool(
@@ -917,6 +921,10 @@ def create_app(
             daily_limit=req.daily_limit,
             api_key=req.api_key,
             clear_api_key=req.clear_api_key,
+            temperature=req.temperature,
+            max_tokens=req.max_tokens,
+            timeout_sec=req.timeout_sec,
+            system_prompt=req.system_prompt,
         )
         pub_key = str(saved.get("api_key") or "")
         return {
@@ -926,6 +934,10 @@ def create_app(
                 "base_url": saved["base_url"],
                 "model": saved["model"],
                 "daily_limit": saved["daily_limit"],
+                "temperature": saved["temperature"],
+                "max_tokens": saved["max_tokens"],
+                "timeout_sec": saved["timeout_sec"],
+                "system_prompt": saved["system_prompt"],
                 "has_api_key": bool(pub_key),
                 "api_key_masked": mask_api_key(pub_key),
                 "configured": bool(
@@ -1221,6 +1233,27 @@ def create_app(
             "mins": [m.model_dump() for m in mins],
             "daily": daily,
         }
+
+    @app.get("/api/indices/{symbol}/detail")
+    async def get_index_detail(
+        symbol: str, user: dict[str, Any] = Depends(require_user)
+    ) -> dict[str, Any]:
+        uid = str(user["user_id"])
+        acc = ctx.broker.get_account_row(user_id=uid)
+        mode = MarketMode(acc["market_mode"])
+        try:
+            return await asyncio.to_thread(ctx.feed.fetch_index_detail, symbol, mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/stocks/{stock_code}/detail")
+    async def get_stock_detail(
+        stock_code: str, user: dict[str, Any] = Depends(require_user)
+    ) -> dict[str, Any]:
+        uid = str(user["user_id"])
+        acc = ctx.broker.get_account_row(user_id=uid)
+        mode = MarketMode(acc["market_mode"])
+        return await asyncio.to_thread(ctx.feed.fetch_stock_detail, stock_code, mode)
 
     @app.post("/api/orders")
     async def place_order(

@@ -31,6 +31,10 @@
     *::-webkit-scrollbar-track { background: transparent; }
     *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.22); border-radius: 999px; }
     *::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.42); }
+    html, body {
+      overflow-x: clip;
+      max-width: 100%;
+    }
     body {
       background: var(--bg-root);
       color: var(--text-main);
@@ -254,11 +258,19 @@
       border-radius: 8px;
       padding: 7px 12px;
       min-width: 0;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, transform 0.12s;
     }
-    .index-name { font-weight: 600; font-size: 12px; color: var(--text-main); white-space: nowrap; }
-    .index-amt { font-size: 11px; color: var(--text-dim); margin-top: 1px; white-space: nowrap; }
+    .index-chip:hover {
+      border-color: rgba(59, 130, 246, 0.55);
+      background: var(--bg-elevated);
+      transform: translateY(-1px);
+    }
+    .index-chip > div { min-width: 0; }
+    .index-name { font-weight: 600; font-size: 12px; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .index-amt { font-size: 11px; color: var(--text-dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .index-price { font-size: 15px; font-weight: 700; text-align: right; white-space: nowrap; }
-    .index-chg { font-size: 11px; text-align: right; white-space: nowrap; }
+    .index-chg { font-size: 11px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .kpi-grid {
       display: grid;
@@ -309,12 +321,16 @@
     /* Inputs */
     .input {
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
       background: var(--bg-root);
       border: 1px solid var(--border);
       border-radius: 7px;
       padding: 7px 10px;
       font-size: 12px;
       color: var(--text-main);
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .input:focus { border-color: var(--accent); }
 
@@ -743,6 +759,59 @@
       .workspace { grid-template-columns: 1fr; }
       .col-right { grid-template-columns: 1fr; }
     }
+    @media (max-width: 640px) {
+      .topbar { padding: 6px 10px; gap: 6px; }
+      .container { padding: 8px 10px 20px; }
+      .main-nav { width: 100%; overflow-x: auto; }
+      .main-nav-btn { flex: 1 0 auto; justify-content: center; padding: 5px 8px; font-size: 11.5px; }
+      .topbar-controls { width: 100%; justify-content: flex-start; gap: 5px; }
+      .index-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+      .index-chip { flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 10px; }
+      .index-chip > div { width: 100%; }
+      .index-price, .index-chg { text-align: left; white-space: normal; word-break: break-word; }
+      .index-amt { white-space: normal; word-break: break-word; }
+      .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+      .kpi-card { padding: 8px 10px; min-width: 0; }
+      .kpi-val { font-size: 15px; word-break: break-all; }
+      .quote-banner { padding: 10px 12px; gap: 10px; }
+      .quote-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 6px 12px; }
+      .chart-toolbar { padding: 8px 10px; }
+      .chart-box { height: 245px; padding: 6px; }
+      .card-hd { padding: 9px 12px; flex-wrap: wrap; gap: 6px; }
+      .card-bd { padding: 10px 12px; }
+      .modal { max-width: calc(100vw - 20px) !important; padding: 14px; }
+      .auth-card { padding: 16px; }
+      .mobile-stack { grid-template-columns: 1fr !important; }
+      .ai-port-card { grid-template-columns: 1fr; }
+      .ai-drawer { width: 100vw; max-width: 100vw; }
+      .detail-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    }
+    .stock-quick-strip {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      padding: 7px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(9, 14, 22, 0.42);
+      font-size: 11.5px;
+      color: var(--text-dim);
+    }
+    .detail-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .detail-metric-box {
+      background: var(--bg-root);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 7px 10px;
+      min-width: 0;
+    }
+    .detail-metric-box .lbl { font-size: 10.5px; color: var(--text-dim); }
+    .detail-metric-box .val { font-size: 13px; font-weight: 700; margin-top: 2px; word-break: break-word; }
   </style>
 </head>
 <body>
@@ -773,6 +842,7 @@
       <button id="navBtnTrade" class="main-nav-btn active" onclick="switchView('trade')"><span data-ico="chart" data-cls="ico-sm"></span><span>盯盘交易</span></button>
       <button id="navBtnScreener" class="main-nav-btn" onclick="switchView('screener')"><span data-ico="flame" data-cls="ico-sm ico-hot"></span><span>5日涨停</span><span id="navScreenerCnt" class="nav-cnt num" style="display:none;">0</span></button>
       <button id="navBtnStrategy" class="main-nav-btn" onclick="switchView('strategy')"><span data-ico="zap" data-cls="ico-sm"></span><span>策略·回测</span><span id="navStratCnt" class="nav-cnt num">0</span></button>
+      <button id="navBtnSim" class="main-nav-btn" onclick="switchView('sim')"><span data-ico="play" data-cls="ico-sm"></span><span>仿真沙盘</span></button>
     </nav>
 
     <div class="topbar-controls">
@@ -782,20 +852,12 @@
       </span>
       <span class="pill" id="sessionPill">加载中...</span>
 
-      <div class="seg" role="group" aria-label="行情模式">
-        <button id="btnModeReal" class="active" onclick="switchMode('REAL')">真实</button>
-        <button id="btnModeSim" onclick="switchMode('SIMULATED')">仿真</button>
-      </div>
-
-      <button id="btnSimTick" class="btn btn-amber" onclick="stepSimTick()" disabled title="仿真模式下立即推进一帧盘口与价格波动">+1步</button>
-      <button class="btn" onclick="settleDay()" title="模拟15:00收盘清算：撤销未成挂单、解锁今日买入(T+1)持仓、记录当日净值并进入下一交易日">清算</button>
       <button class="btn" id="btnRisk" onclick="openRiskModal()" title="配置单票仓位上限、单笔金额上限与账户亏损熔断规则"><span data-ico="shield"></span><span>风控</span></button>
-      <button class="btn" id="btnAiConfig" onclick="openAiConfigModal()" title="配置通用 OpenAI/Ollama AI 接口并查看后台端口连通信息"><span data-ico="cpu"></span><span>AI端口</span></button>
       <button class="btn btn-amber" id="btnAiDrawer" onclick="openAiDrawer()" title="打开右侧大屏 AI 投研助手抽屉"><span data-ico="sparkles"></span><span>AI投研</span></button>
       <button class="btn btn-icon-only" id="btnSound" onclick="toggleSound()" title="提示音: 开" aria-label="切换提示音"><span data-ico="bell"></span></button>
       <button class="btn btn-icon-only" id="btnDesktopNotify" onclick="toggleDesktopNotification()" title="桌面通知: 关" aria-label="切换桌面通知"><span data-ico="monitor"></span></button>
       <button class="btn btn-danger" onclick="openResetModal()" title="重置模拟账户资金与持仓">重置</button>
-      <button class="btn" id="btnAccountModal" onclick="openAccountModal()" style="display:none;" title="账户信息、修改密码及管理员邀请码"><span data-ico="user" data-cls="ico-sm"></span><span id="navUsername">账户</span></button>
+      <button class="btn" id="btnAccountModal" onclick="openAccountModal()" style="display:none;" title="账户信息与修改密码"><span data-ico="user" data-cls="ico-sm"></span><span id="navUsername">账户</span></button>
     </div>
   </header>
 
@@ -807,6 +869,14 @@
         <span id="siteAnnouncementBody" style="color:var(--text-main);"></span>
       </div>
       <button class="btn" style="padding:2px 8px;font-size:11px;" onclick="document.getElementById('siteAnnouncementBar').style.display='none'">收起</button>
+    </div>
+    <div id="simActiveBanner" style="display:none;margin-bottom:8px;padding:8px 12px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fde68a;font-size:12px;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div><strong>仿真沙盘模式运行中</strong> · 盘口与成交与真实行情隔离推演，可全天候自由下单与推进。</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-amber" onclick="stepSimTick()">+1步 推进</button>
+        <button class="btn" onclick="settleDay()">模拟清算</button>
+        <button class="btn btn-primary" onclick="switchMode('REAL')">切回真实行情</button>
+      </div>
     </div>
     <!-- VIEW 1: Trading Desk -->
     <section id="viewTrade" class="view-section active">
@@ -874,9 +944,10 @@
             <div id="quoteBanner" class="quote-banner">
               <div>
                 <div class="quote-title" style="flex-wrap:wrap;">
-                  <h2 id="curName">--</h2>
+                  <h2 id="curName" style="cursor:pointer;" onclick="openMarketDetailModal('STOCK', state.selectedCode)" title="点击查看个股档案与技术指标">--</h2>
                   <span class="muted num" id="curCode">------</span>
                   <span class="pill" style="padding:2px 8px;font-size:11px;" id="curSource">--</span>
+                  <button id="btnBannerDetail" class="pill-toggle" style="padding:2px 8px;font-size:11px;" onclick="openMarketDetailModal('STOCK', state.selectedCode)" title="查看个股行情档案、题材概念与多周期指标"><span data-ico="fileText" data-cls="ico-sm"></span><span>个股详情</span></button>
                   <button id="btnBannerPin" class="pill-toggle" style="padding:2px 8px;font-size:11px;" onclick="toggleSelectedPin()" title="置顶当前股票"><span data-ico="pin" data-cls="ico-sm"></span><span>置顶</span></button>
                   <button id="btnBannerMeta" class="pill-toggle" style="padding:2px 8px;font-size:11px;" onclick="openWatchMetaModal()" title="设置自选分组与备注"><span data-ico="edit" data-cls="ico-sm"></span><span>分组/备注</span></button>
                   <button id="btnBannerAi" class="pill-toggle" style="padding:2px 8px;font-size:11px;border-color:rgba(245,158,11,0.4);color:#fbbf24;" onclick="askAiQuick('DIAGNOSE_STOCK')" title="在右侧大屏 AI 抽屉中诊断当前股票"><span data-ico="sparkles" data-cls="ico-sm ico-ai"></span><span>AI诊股</span></button>
@@ -897,6 +968,9 @@
                 <div><div class="qm-label">市盈率PE</div><div id="qmPe">--</div></div>
                 <div><div class="qm-label">涨停 / 跌停</div><div><span id="qmLu" class="up">--</span> / <span id="qmLd" class="down">--</span></div></div>
               </div>
+            </div>
+            <div id="stockQuickStrip" class="stock-quick-strip num">
+              <span>点击个股或顶部大盘指数即可即时查看档案与多周期信号</span>
             </div>
 
             <div class="chart-toolbar">
@@ -996,7 +1070,7 @@
 
               <button id="orderSubmitBtn" class="order-cta buy" onclick="submitOrder()">确认模拟买入</button>
               <div id="offHoursNotice" class="notice-box" style="display:none;">
-                当前处于非连续竞价时段，真实模式下委托将挂单等待开盘撮合；点击顶部 <strong>仿真</strong> 可全天候即时成交测试。
+                当前处于非连续竞价时段，真实模式下委托将挂单等待开盘撮合；可前往顶部 <strong>「仿真沙盘」</strong> 开启全天候推演测试。
               </div>
             </div>
           </div>
@@ -1143,6 +1217,53 @@
         </div>
       </div>
     </section>
+
+    <!-- VIEW 4: Dedicated Sandbox Simulation Mode -->
+    <section id="viewSim" class="view-section">
+      <div class="view-hd">
+        <div>
+          <h2><span data-ico="play" data-cls="ico-ai"></span><span>24h 仿真沙盘演练模式</span></h2>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">与真实行情完全隔离的独立模拟沙盘，支持休市时段全天候测试撮合、T+1 结算与自动策略触发</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button class="btn" onclick="switchView('trade')">← 返回盯盘交易</button>
+        </div>
+      </div>
+
+      <div class="strategy-workspace">
+        <div class="card">
+          <div class="card-hd">
+            <span>沙盘引擎与模式切换</span>
+            <span id="simViewStatusPill" class="pill">真实行情模式</span>
+          </div>
+          <div class="card-bd">
+            <p style="font-size:12.5px;color:var(--text-dim);margin-bottom:14px;line-height:1.7;">
+              默认处于「真实行情」模式，实时拉取沪深北真实五档盘口；当需要在周末、夜间或非交易时间演练买入撮合、网格/均线策略触发与涨跌停验证时，可在此切换为「仿真推演模式」。
+            </p>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+              <div class="seg" role="group" aria-label="行情模式切换">
+                <button id="btnModeReal" class="active" onclick="switchMode('REAL')">真实行情模式</button>
+                <button id="btnModeSim" onclick="switchMode('SIMULATED')">24h 仿真推演</button>
+              </div>
+              <button id="btnSimTick" class="btn btn-amber" onclick="stepSimTick()" disabled>+1步 推进沙盘盘口</button>
+              <button class="btn" onclick="settleDay()">模拟 15:00 收盘清算 (T+1解锁)</button>
+            </div>
+            <div class="notice-box" style="margin-top:0;">
+              提示：仿真行情仅作用于当前账号的模拟演练，不会污染全站真实行情缓存；测试完成后可随时切回「真实行情模式」。
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><span>快捷演练操作</span></div>
+          <div class="card-bd" style="display:flex;flex-direction:column;gap:10px;">
+            <button class="btn btn-primary" onclick="switchMode('SIMULATED').then(()=>switchView('trade'))">开启仿真并前往下单台测试 →</button>
+            <button class="btn" onclick="switchMode('REAL').then(()=>switchView('trade'))">切回真实行情并回到盯盘交易 →</button>
+            <button class="btn btn-danger" onclick="openResetModal()">重置当前模拟账户初始资金</button>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Large Right Slide-Over AI Research Drawer -->
@@ -1158,7 +1279,6 @@
       </div>
       <div style="display:flex;align-items:center;gap:6px;">
         <button id="btnAiWide" class="btn" style="padding:4px 8px;font-size:11px;" onclick="toggleAiDrawerWidth()" title="切换标准 / 宽屏研报视图"><span data-ico="maximize" data-cls="ico-sm"></span><span>宽屏</span></button>
-        <button class="btn" style="padding:4px 8px;font-size:11px;" onclick="openAiConfigModal()"><span data-ico="sliders" data-cls="ico-sm"></span><span>端口设置</span></button>
         <button class="btn btn-icon-only" onclick="closeAiDrawer()" title="关闭 AI 抽屉 (Esc)" aria-label="关闭"><span data-ico="x" data-cls="ico-sm"></span></button>
       </div>
     </div>
@@ -1260,83 +1380,39 @@
     </div>
   </div>
 
-  <!-- AI Endpoint & Port Settings Modal -->
-  <div id="aiConfigModal" class="modal-backdrop">
-    <div class="modal" style="max-width:580px;max-height:92vh;overflow-y:auto;">
-      <h3 style="font-size:15px;margin-bottom:4px;">通用 AI 接口与后台端口信息</h3>
-      <p id="aiConfigIntro" style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">兼容 OpenAI Chat Completions 协议，支持本地 Ollama/vLLM 端口及 DeepSeek、通义千问等通用接口。</p>
-
-      <div id="aiPresetPills" class="quick-pills" style="margin-bottom:10px;">
-        <button class="q-pill ai-local-preset" onclick="applyAiPreset('Ollama 本地', 'http://127.0.0.1:11434/v1', 'qwen2.5:14b')">Ollama (11434)</button>
-        <button class="q-pill ai-local-preset" onclick="applyAiPreset('vLLM 本地', 'http://127.0.0.1:8000/v1', 'Qwen/Qwen2.5-14B-Instruct')">vLLM (8000)</button>
-        <button class="q-pill ai-local-preset" onclick="applyAiPreset('LM Studio', 'http://127.0.0.1:1234/v1', 'local-model')">LM Studio (1234)</button>
-        <button class="q-pill" onclick="applyAiPreset('DeepSeek', 'https://api.deepseek.com/v1', 'deepseek-chat')">DeepSeek (443)</button>
-        <button class="q-pill" onclick="applyAiPreset('通义千问', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus')">通义千问 (443)</button>
-        <button class="q-pill" onclick="applyAiPreset('OpenAI 兼容', 'https://api.openai.com/v1', 'gpt-4o-mini')">OpenAI (443)</button>
-      </div>
-
-      <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px;cursor:pointer;">
-        <input id="aiEnabledInput" type="checkbox" />
-        <span>启用外部 AI 大模型接口（关闭时将使用本地量化指标摘要预览）</span>
-      </label>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="form-row">
+  <!-- Market Index & Stock Instant Detail Modal -->
+  <div id="marketDetailModal" class="modal-backdrop" onclick="if(event.target===this)closeMarketDetailModal()">
+    <div class="modal" style="max-width:740px;max-height:92vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
         <div>
-          <div class="form-lbl"><span>服务商名称</span></div>
-          <input id="aiProviderInput" class="input" placeholder="如 Ollama / DeepSeek" />
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <h3 id="mdTitle" style="font-size:17px;font-weight:700;">--</h3>
+            <span id="mdCode" class="muted num">--</span>
+            <span id="mdBadge" class="board-tag">--</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-top:4px;flex-wrap:wrap;">
+            <span id="mdPrice" class="num" style="font-size:24px;font-weight:800;">--</span>
+            <span id="mdChange" class="num" style="font-size:13.5px;font-weight:600;">--</span>
+            <span id="mdUpdated" class="muted num" style="font-size:11px;">--</span>
+          </div>
         </div>
-        <div>
-          <div class="form-lbl"><span>模型名称 (Model)</span></div>
-          <input id="aiModelInput" class="input num" placeholder="如 qwen2.5:14b / deepseek-chat" />
+        <button class="btn" onclick="closeMarketDetailModal()">关闭</button>
+      </div>
+
+      <div id="mdConcepts" class="quick-pills" style="margin-bottom:8px;display:none;"></div>
+      <div id="mdMetricsGrid" class="detail-metrics-grid num"></div>
+
+      <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg-root);padding:8px 10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);margin-bottom:4px;flex-wrap:wrap;gap:6px;">
+          <span>近期日K线与均线 (MA5 / MA10 / MA20)</span>
+          <span id="mdTechSignal" class="num">--</span>
+        </div>
+        <div style="height:210px;width:100%;">
+          <canvas id="mdChartCanvas" style="width:100%;height:100%;display:block;"></canvas>
         </div>
       </div>
 
-      <div class="form-row">
-        <div class="form-lbl"><span>接口 Base URL（自动解析主机与端口）</span></div>
-        <input id="aiBaseUrlInput" class="input num" placeholder="http://127.0.0.1:11434/v1" oninput="updateAiPortPreview()" />
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;" class="form-row">
-        <div>
-          <div class="form-lbl"><span>API Key（仅后端加密保存，不回显明文）</span><span id="aiKeyMaskHint" class="muted num">未设置</span></div>
-          <input id="aiApiKeyInput" type="password" class="input num" autocomplete="new-password" placeholder="输入新密钥（留空则保留当前已存密钥）" />
-        </div>
-        <label style="display:flex;align-items:center;gap:5px;font-size:11px;height:32px;cursor:pointer;white-space:nowrap;">
-          <input id="aiClearKeyInput" type="checkbox" />
-          <span>清空Key</span>
-        </label>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;" class="form-row">
-        <div>
-          <div class="form-lbl"><span>Temperature</span></div>
-          <input id="aiTempInput" type="number" step="0.1" min="0" max="2" value="0.3" class="input num" />
-        </div>
-        <div>
-          <div class="form-lbl"><span>Max Tokens</span></div>
-          <input id="aiMaxTokInput" type="number" step="100" min="128" max="8192" value="1500" class="input num" />
-        </div>
-        <div>
-          <div class="form-lbl"><span>超时 (秒)</span></div>
-          <input id="aiTimeoutInput" type="number" min="3" max="180" value="30" class="input num" />
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-lbl"><span>自定义系统提示词 (可选，留空使用内置A股投研规则)</span></div>
-        <input id="aiSysPromptInput" class="input" placeholder="留空即使用内置 A 股 T+1 / 指标投研提示词" />
-      </div>
-
-      <div id="aiPortInfoBox" class="ai-port-card num"></div>
-      <div id="aiDiscoveredModels" class="quick-pills" style="margin-top:8px;"></div>
-
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:14px;">
-        <button id="btnAiTest" class="btn btn-amber" onclick="testAiConnection()"><span data-ico="plug"></span><span>测试端口与模型连通</span></button>
-        <div style="display:flex;gap:8px;">
-          <button class="btn" onclick="closeAiConfigModal()">取消</button>
-          <button class="btn btn-primary" onclick="saveAiConfig()"><span data-ico="save"></span><span>保存 AI 配置</span></button>
-        </div>
-      </div>
+      <div id="mdActions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;flex-wrap:wrap;"></div>
     </div>
   </div>
 
@@ -1455,7 +1531,7 @@
 
         <div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:12px;">
           <div style="font-size:12.5px;font-weight:600;margin-bottom:8px;">绑定邮箱 &amp; 邮件预警偏好</div>
-          <div style="display:grid;grid-template-columns:1fr auto 130px auto;gap:6px;align-items:center;" class="form-row">
+          <div style="display:grid;grid-template-columns:1fr auto 130px auto;gap:6px;align-items:center;" class="form-row mobile-stack">
             <input id="bindEmailInput" type="email" class="input" placeholder="绑定/更换邮箱 (如 name@domain.com)" />
             <button id="btnSendBindCode" class="btn btn-amber" onclick="sendEmailCode('BIND_EMAIL','bindEmailInput','btnSendBindCode')">发送验证码</button>
             <input id="bindEmailCode" class="input num" placeholder="6位验证码" />
@@ -1469,7 +1545,7 @@
 
         <div style="border-top:1px solid var(--border);padding-top:12px;">
           <div style="font-size:12.5px;font-weight:600;margin-bottom:8px;">修改登录密码</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;">
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;" class="mobile-stack">
             <div>
               <div class="form-lbl"><span>当前密码</span></div>
               <input id="oldPwdInput" type="password" class="input" autocomplete="current-password" />
@@ -1853,7 +1929,7 @@
         const cls = dirCls(idx.change);
         const sign = idx.change >= 0 ? "+" : "";
         return `
-          <div class="index-chip">
+          <div class="index-chip" onclick="openMarketDetailModal('INDEX', '${esc(idx.symbol)}')" title="点击查看 ${esc(idx.name)} 行情档案与日K线趋势">
             <div>
               <div class="index-name">${esc(idx.name)}</div>
               <div class="index-amt num">成交 ${fmtYi(idx.amount)}</div>
@@ -1870,17 +1946,19 @@
     const encArg = (s) => encodeURIComponent(String(s ?? "")).replace(/'/g, "%27");
 
     function switchView(viewName, syncHash = true) {
-      const allowed = new Set(["trade", "screener", "strategy"]);
+      const allowed = new Set(["trade", "screener", "strategy", "sim"]);
       const next = allowed.has(viewName) ? viewName : "trade";
       state.activeView = next;
 
       document.getElementById("navBtnTrade")?.classList.toggle("active", next === "trade");
       document.getElementById("navBtnScreener")?.classList.toggle("active", next === "screener");
       document.getElementById("navBtnStrategy")?.classList.toggle("active", next === "strategy");
+      document.getElementById("navBtnSim")?.classList.toggle("active", next === "sim");
 
       document.getElementById("viewTrade")?.classList.toggle("active", next === "trade");
       document.getElementById("viewScreener")?.classList.toggle("active", next === "screener");
       document.getElementById("viewStrategy")?.classList.toggle("active", next === "strategy");
+      document.getElementById("viewSim")?.classList.toggle("active", next === "sim");
 
       if (syncHash) {
         try { history.replaceState(null, "", `#${next}`); } catch {}
@@ -1927,9 +2005,20 @@
       const risk = state.data.risk_config || {};
       const isSim = acc.market_mode === "SIMULATED";
 
-      document.getElementById("btnModeReal").className = isSim ? "" : "active";
-      document.getElementById("btnModeSim").className = isSim ? "active sim-active" : "";
-      document.getElementById("btnSimTick").disabled = !isSim;
+      const btnReal = document.getElementById("btnModeReal");
+      const btnSim = document.getElementById("btnModeSim");
+      const btnTick = document.getElementById("btnSimTick");
+      if (btnReal) btnReal.className = isSim ? "" : "active";
+      if (btnSim) btnSim.className = isSim ? "active sim-active" : "";
+      if (btnTick) btnTick.disabled = !isSim;
+
+      const simBanner = document.getElementById("simActiveBanner");
+      if (simBanner) simBanner.style.display = isSim ? "flex" : "none";
+      const simPill = document.getElementById("simViewStatusPill");
+      if (simPill) {
+        simPill.textContent = isSim ? "仿真推演中 (24h沙盘)" : "真实行情模式";
+        simPill.style.color = isSim ? "#fbbf24" : "#4ade80";
+      }
       document.getElementById("wsDot").className = "dot" + (isSim ? " sim" : "");
 
       const riskActive = (Number(risk.max_single_position_pct) < 100) || (Number(risk.max_order_amount) > 0) || (Number(risk.max_total_loss_pct) > 0);
@@ -1937,25 +2026,6 @@
       if (btnRisk) {
         btnRisk.innerHTML = `${ico("shield")}<span>${riskActive ? "风控·开" : "风控"}</span>`;
         btnRisk.className = "btn" + (riskActive ? " btn-amber" : "");
-      }
-
-      const ai = state.data.ai_config || {};
-      const btnAi = document.getElementById("btnAiConfig");
-      if (btnAi) {
-        if (!ai.enabled) {
-          btnAi.innerHTML = `${ico("cpu")}<span>AI端口</span><span class="dot offline" style="width:6px;height:6px;background:#64748b;"></span>`;
-          btnAi.className = "btn";
-          btnAi.title = "AI 端口未启用（点击配置通用 OpenAI/Ollama 接口）";
-        } else if (ai.last_check_status === "OK") {
-          btnAi.innerHTML = `${ico("cpu")}<span>AI端口</span><span class="dot" style="width:6px;height:6px;"></span>`;
-          btnAi.className = "btn btn-primary";
-          btnAi.title = `已连接 AI 端口: ${ai.host}:${ai.port} · ${ai.model}（点击管理）`;
-        } else {
-          const isErr = ai.last_check_status === "ERROR";
-          btnAi.innerHTML = `${ico("cpu")}<span>AI端口</span><span class="dot ${isErr ? "offline" : "sim"}" style="width:6px;height:6px;"></span>`;
-          btnAi.className = "btn btn-amber";
-          btnAi.title = `AI 端口: ${ai.host}:${ai.port} · ${ai.model}（状态: ${ai.last_check_status}，点击测试）`;
-        }
       }
 
       const pill = document.getElementById("sessionPill");
@@ -2059,6 +2129,7 @@
             <div class="num ${c}" style="text-align:right;font-weight:700;">${q ? fmt(q.price) : "--"}</div>
             <div class="num ${c}" style="text-align:right;font-weight:600;">${pctStr}</div>
             <div class="watch-ops" onclick="event.stopPropagation()">
+              <button class="watch-op" title="查看个股档案与指标" onclick="openMarketDetailModal('STOCK', '${esc(item.stock_code)}')">${ico("fileText", "ico-sm")}</button>
               <button class="watch-op ${item.is_pinned ? "pinned" : ""}" title="${item.is_pinned ? "取消置顶" : "置顶自选"}" onclick="toggleWatchPin('${esc(item.stock_code)}', ${!item.is_pinned})">${ico("pin", "ico-sm")}</button>
               <button class="watch-op" title="分组与备注" onclick="openWatchMetaModal('${esc(item.stock_code)}')">${ico("edit", "ico-sm")}</button>
               <button class="watch-op del" title="移除自选" onclick="removeWatchlist('${esc(item.stock_code)}')">${ico("x", "ico-sm")}</button>
@@ -2367,7 +2438,7 @@
               ${pos.map((p) => `
                 <tr>
                   <td>${esc(p.stock_code)}</td>
-                  <td><a href="#" onclick="event.preventDefault();selectStock('${esc(p.stock_code)}')" style="color:var(--accent);text-decoration:none;">${esc(p.short_name)}</a></td>
+                  <td><a href="#" onclick="event.preventDefault();selectStock('${esc(p.stock_code)}');openMarketDetailModal('STOCK','${esc(p.stock_code)}')" style="color:var(--accent);text-decoration:none;">${esc(p.short_name)}</a></td>
                   <td>${p.total_qty}</td>
                   <td>${p.available_qty}</td>
                   <td>${p.today_bought_qty}</td>
@@ -2918,9 +2989,12 @@
                   <td>${it.max_consecutive_boards > 1 ? `<span class="zt-badge">${it.max_consecutive_boards}连板</span>` : `<span class="muted">首板</span>`}</td>
                   <td title="${esc(it.limit_up_dates.join(', '))}">${esc(it.last_limit_up_date)}</td>
                   <td>
-                    ${inWatch
-                      ? `<button class="q-pill" onclick="viewStockFromScreener('${esc(it.stock_code)}')">看图盯盘</button>`
-                      : `<button class="q-pill" style="border-color:rgba(239,68,68,0.45);color:#fca5a5;" onclick="addAndWatchScreenerStock('${esc(it.stock_code)}', '${esc(it.short_name)}')">+ 自选看图</button>`}
+                    <div style="display:flex;gap:4px;justify-content:flex-end;">
+                      <button class="q-pill" onclick="openMarketDetailModal('STOCK', '${esc(it.stock_code)}')">详情</button>
+                      ${inWatch
+                        ? `<button class="q-pill" onclick="viewStockFromScreener('${esc(it.stock_code)}')">看图盯盘</button>`
+                        : `<button class="q-pill" style="border-color:rgba(239,68,68,0.45);color:#fca5a5;" onclick="addAndWatchScreenerStock('${esc(it.stock_code)}', '${esc(it.short_name)}')">+ 自选看图</button>`}
+                    </div>
                   </td>
                 </tr>
               `;
@@ -3035,6 +3109,225 @@
       }
     }
 
+    const _detailCache = new Map();
+
+    async function fetchMarketDetailData(kind, id) {
+      const key = `${kind}:${id}`;
+      const hit = _detailCache.get(key);
+      if (hit && Date.now() - hit.ts < 15000) return hit.data;
+      const url = kind === "INDEX"
+        ? `/api/indices/${encodeURIComponent(id)}/detail`
+        : `/api/stocks/${encodeURIComponent(id)}/detail`;
+      const data = await api(url);
+      _detailCache.set(key, { ts: Date.now(), data });
+      return data;
+    }
+
+    async function loadStockQuickStrip(code) {
+      const strip = document.getElementById("stockQuickStrip");
+      if (!strip || !code) return;
+      try {
+        const d = await fetchMarketDetailData("STOCK", code);
+        if (state.selectedCode !== code) return;
+        const sum = d.summary || {};
+        const concepts = (d.concepts || []).slice(0, 3).join(" / ");
+        const c5 = sum.change_5d_pct != null ? `${sum.change_5d_pct >= 0 ? "+" : ""}${sum.change_5d_pct}%` : "--";
+        const c20 = sum.change_20d_pct != null ? `${sum.change_20d_pct >= 0 ? "+" : ""}${sum.change_20d_pct}%` : "--";
+        const c5Cls = sum.change_5d_pct != null ? dirCls(sum.change_5d_pct) : "flat";
+        const c20Cls = sum.change_20d_pct != null ? dirCls(sum.change_20d_pct) : "flat";
+        strip.innerHTML = `
+          <span>板块: <strong style="color:var(--text-main);">${esc(d.board || "--")}</strong>${concepts ? ` (${esc(concepts)})` : ""}</span>
+          <span>MA5/10/20: <strong>${sum.ma5 ?? "--"}</strong> / <strong>${sum.ma10 ?? "--"}</strong> / <strong>${sum.ma20 ?? "--"}</strong></span>
+          <span>5日: <strong class="${c5Cls}">${c5}</strong></span>
+          <span>20日: <strong class="${c20Cls}">${c20}</strong></span>
+          <span>${esc(sum.macd_signal || "--")}</span>
+          <button class="q-pill" style="margin-left:auto;" onclick="openMarketDetailModal('STOCK', '${esc(code)}')">展开档案 →</button>
+        `;
+      } catch (_) {}
+    }
+
+    function closeMarketDetailModal() {
+      document.getElementById("marketDetailModal")?.classList.remove("open");
+    }
+
+    function drawModalDailyChart(bars) {
+      const canvas = document.getElementById("mdChartCanvas");
+      if (!canvas) return;
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const w = Math.max(260, rect.width || 620);
+      const h = Math.max(180, rect.height || 210);
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      if (!bars || !bars.length) {
+        ctx.fillStyle = "#8b9bb4";
+        ctx.font = "12px sans-serif";
+        ctx.fillText("暂无日K线数据", 16, 40);
+        return;
+      }
+
+      const pad = { l: 54, r: 12, t: 14, b: 22 };
+      const plotW = w - pad.l - pad.r;
+      const plotH = h - pad.t - pad.b;
+      let minP = Infinity;
+      let maxP = -Infinity;
+      for (const b of bars) {
+        minP = Math.min(minP, b.low, b.ma5 ?? b.low, b.ma10 ?? b.low, b.ma20 ?? b.low);
+        maxP = Math.max(maxP, b.high, b.ma5 ?? b.high, b.ma10 ?? b.high, b.ma20 ?? b.high);
+      }
+      if (minP === maxP) { minP *= 0.98; maxP *= 1.02; }
+      const yOf = (p) => pad.t + ((maxP - p) / (maxP - minP)) * plotH;
+
+      ctx.strokeStyle = "rgba(35,48,69,0.75)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 3; i++) {
+        const y = pad.t + (plotH * i) / 3;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+        const pv = maxP - ((maxP - minP) * i) / 3;
+        ctx.fillStyle = "#8b9bb4";
+        ctx.font = "10.5px ui-monospace, monospace";
+        ctx.textAlign = "right";
+        ctx.fillText(pv.toFixed(2), pad.l - 6, y + 3.5);
+      }
+
+      const step = plotW / bars.length;
+      const cw = Math.max(2, Math.min(10, step * 0.62));
+      bars.forEach((b, i) => {
+        const x = pad.l + i * step + step / 2;
+        const up = b.close >= b.open;
+        const col = up ? "#ef4444" : "#22c55e";
+        ctx.strokeStyle = col;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(x, yOf(b.high));
+        ctx.lineTo(x, yOf(b.low));
+        ctx.stroke();
+        const topY = yOf(Math.max(b.open, b.close));
+        const botY = yOf(Math.min(b.open, b.close));
+        ctx.fillRect(x - cw / 2, topY, cw, Math.max(1.5, botY - topY));
+      });
+
+      const maColors = { ma5: "#f59e0b", ma10: "#3b82f6", ma20: "#c084fc" };
+      for (const [k, color] of Object.entries(maColors)) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        let started = false;
+        bars.forEach((b, i) => {
+          if (b[k] == null) return;
+          const x = pad.l + i * step + step / 2;
+          const y = yOf(b[k]);
+          if (!started) { ctx.moveTo(x, y); started = true; }
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#8b9bb4";
+      ctx.font = "10px ui-monospace, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(bars[0].trade_date, pad.l, h - 6);
+      ctx.textAlign = "right";
+      ctx.fillText(bars[bars.length - 1].trade_date, w - pad.r, h - 6);
+    }
+
+    async function openMarketDetailModal(kind, id) {
+      const modal = document.getElementById("marketDetailModal");
+      if (!modal || !id) return;
+      document.getElementById("mdTitle").textContent = "加载中...";
+      document.getElementById("mdCode").textContent = id;
+      document.getElementById("mdBadge").textContent = kind === "INDEX" ? "大盘指数" : "个股档案";
+      document.getElementById("mdPrice").textContent = "--";
+      document.getElementById("mdChange").textContent = "--";
+      document.getElementById("mdUpdated").textContent = "";
+      document.getElementById("mdConcepts").style.display = "none";
+      document.getElementById("mdMetricsGrid").innerHTML = "";
+      document.getElementById("mdActions").innerHTML = "";
+      modal.classList.add("open");
+
+      try {
+        const d = await fetchMarketDetailData(kind, id);
+        const snap = d.snapshot || d.quote || {};
+        const sum = d.summary || {};
+        const cls = dirCls(snap.change ?? 0);
+        const sign = (snap.change ?? 0) >= 0 ? "+" : "";
+
+        document.getElementById("mdTitle").textContent = d.name || d.short_name || snap.name || snap.short_name || id;
+        document.getElementById("mdCode").textContent = d.code || d.stock_code || id;
+        document.getElementById("mdBadge").textContent = kind === "INDEX" ? "核心指数" : (d.board || "A股");
+        const pEl = document.getElementById("mdPrice");
+        pEl.textContent = fmt(snap.price);
+        pEl.className = `num ${cls}`;
+        const cEl = document.getElementById("mdChange");
+        cEl.textContent = `${sign}${fmt(snap.change)} (${sign}${Number(snap.change_pct || 0).toFixed(2)}%)`;
+        cEl.className = `num ${cls}`;
+        document.getElementById("mdUpdated").textContent = `更新: ${snap.updated_at || "--"}`;
+
+        const cWrap = document.getElementById("mdConcepts");
+        if (d.concepts?.length) {
+          cWrap.innerHTML = `<span class="muted" style="font-size:11px;">所属概念:</span>` + d.concepts.map((t) => `<span class="wf-pill">${esc(t)}</span>`).join("");
+          cWrap.style.display = "flex";
+        } else {
+          cWrap.style.display = "none";
+        }
+
+        const c5 = sum.change_5d_pct != null ? `${sum.change_5d_pct >= 0 ? "+" : ""}${sum.change_5d_pct}%` : "--";
+        const c20 = sum.change_20d_pct != null ? `${sum.change_20d_pct >= 0 ? "+" : ""}${sum.change_20d_pct}%` : "--";
+        const nzFmt = (v) => (Number(v) > 0 ? fmt(v) : "--");
+        const cards = [
+          { lbl: "今开 / 昨收", val: `${nzFmt(snap.open)} / ${nzFmt(snap.pre_close)}` },
+          { lbl: "最高 / 最低", val: `${nzFmt(snap.high)} / ${nzFmt(snap.low)}` },
+          { lbl: "成交额", val: Number(snap.amount) > 0 ? fmtYi(snap.amount) : "--" },
+          { lbl: "振幅", val: Number(snap.amplitude) > 0 ? `${Number(snap.amplitude).toFixed(2)}%` : "--" },
+          { lbl: "近5日 / 20日涨跌", val: `${c5} / ${c20}` },
+          { lbl: "MA5 / MA10 / MA20", val: `${sum.ma5 ?? "--"} / ${sum.ma10 ?? "--"} / ${sum.ma20 ?? "--"}` },
+          ...(kind === "STOCK"
+            ? [
+                { lbl: "换手率 / PE", val: `${Number(snap.turnover_ratio || 0).toFixed(2)}% / ${snap.pe_ratio > 0 ? snap.pe_ratio.toFixed(2) : "--"}` },
+                { lbl: "涨停 / 跌停价", val: `${fmt(snap.limit_up)} / ${fmt(snap.limit_down)}` },
+              ]
+            : [
+                { lbl: "20日区间高 / 低", val: `${sum.high_20d ?? "--"} / ${sum.low_20d ?? "--"}` },
+                { lbl: "技术信号", val: sum.macd_signal || "--" },
+              ]),
+        ];
+        document.getElementById("mdMetricsGrid").innerHTML = cards.map((m) => `
+          <div class="detail-metric-box">
+            <div class="lbl">${esc(m.lbl)}</div>
+            <div class="val">${esc(m.val)}</div>
+          </div>
+        `).join("");
+        document.getElementById("mdTechSignal").textContent = sum.macd_signal || "--";
+
+        requestAnimationFrame(() => drawModalDailyChart(d.daily || []));
+
+        const actions = document.getElementById("mdActions");
+        if (kind === "INDEX") {
+          actions.innerHTML = `
+            <button class="btn btn-amber" onclick="closeMarketDetailModal(); openAiDrawer(); document.getElementById('aiPromptInput').value='请结合当前${esc(d.name)}点位(${fmt(snap.price)}，${sign}${Number(snap.change_pct || 0).toFixed(2)}%)与成交额(${fmtYi(snap.amount || 0)})，解读今日A股大盘强弱与仓位建议。'; sendAiAsk('CHAT');">AI 解读大盘</button>
+            <button class="btn" onclick="closeMarketDetailModal()">关闭</button>
+          `;
+        } else {
+          const code = d.stock_code;
+          const sname = d.short_name || code;
+          const inWatch = (state.data?.watchlist || []).some((w) => w.stock_code === code);
+          actions.innerHTML = `
+            ${inWatch ? "" : `<button class="btn" onclick="addWatchlist('${esc(code)}', '${esc(sname)}'); closeMarketDetailModal();">+ 加入自选</button>`}
+            <button class="btn" onclick="closeMarketDetailModal(); selectStock('${esc(code)}'); switchView('trade');">在主图盯盘</button>
+            <button class="btn btn-amber" onclick="closeMarketDetailModal(); selectStock('${esc(code)}'); askAiQuick('DIAGNOSE_STOCK');">AI 一键诊股</button>
+            <button class="btn btn-primary" onclick="closeMarketDetailModal(); selectStock('${esc(code)}'); switchView('trade'); setOrderSide('BUY');">去下单买入</button>
+          `;
+        }
+      } catch (e) {
+        document.getElementById("mdTitle").textContent = "加载失败";
+        showToast(e.message || "无法获取详情", "err");
+      }
+    }
+
     // Actions
     async function selectStock(code) {
       state.selectedCode = code;
@@ -3046,6 +3339,7 @@
       renderSelectedHeader();
       renderOrderBook();
       renderOrderTicketHints();
+      loadStockQuickStrip(code);
       await refreshChartData(true);
     }
 
@@ -3274,142 +3568,10 @@
     }
 
     function openAiConfigModal() {
-      const cfg = state.data?.ai_config || {};
-      const allowPriv = cfg.allow_private_endpoints !== false;
-      document.querySelectorAll(".ai-local-preset").forEach((el) => {
-        el.style.display = allowPriv ? "inline-flex" : "none";
-      });
-      const intro = document.getElementById("aiConfigIntro");
-      if (intro) {
-        intro.textContent = allowPriv
-          ? "兼容 OpenAI Chat Completions 协议，支持本地 Ollama/vLLM 端口及 DeepSeek、通义千问等通用接口。"
-          : "当前为公网部署模式，请填写可公网访问的 HTTPS 大模型接口（如 DeepSeek、通义千问、OpenAI 兼容网关），密钥仅后端隔离保存。";
-      }
-      state.aiTestResult = null;
-      document.getElementById("aiEnabledInput").checked = !!cfg.enabled;
-      const defUrl = !allowPriv && (!cfg.base_url || cfg.base_url.includes("127.0.0.1"))
-        ? "https://api.deepseek.com/v1"
-        : (cfg.base_url || "http://127.0.0.1:11434/v1");
-      const defModel = !allowPriv && (!cfg.base_url || cfg.base_url.includes("127.0.0.1"))
-        ? "deepseek-chat"
-        : (cfg.model || "qwen2.5:14b");
-      const defProv = !allowPriv && (!cfg.base_url || cfg.base_url.includes("127.0.0.1"))
-        ? "DeepSeek"
-        : (cfg.provider_name || "Ollama 本地");
-      document.getElementById("aiProviderInput").value = defProv;
-      document.getElementById("aiBaseUrlInput").value = defUrl;
-      document.getElementById("aiModelInput").value = defModel;
-      document.getElementById("aiApiKeyInput").value = "";
-      document.getElementById("aiClearKeyInput").checked = false;
-      document.getElementById("aiKeyMaskHint").textContent = cfg.has_api_key ? `已存: ${cfg.api_key_masked}` : "未设置";
-      document.getElementById("aiTempInput").value = cfg.temperature ?? 0.3;
-      document.getElementById("aiMaxTokInput").value = cfg.max_tokens ?? 1500;
-      document.getElementById("aiTimeoutInput").value = cfg.timeout_sec ?? 30;
-      document.getElementById("aiSysPromptInput").value = cfg.system_prompt || "";
-      document.getElementById("aiDiscoveredModels").innerHTML = "";
-      updateAiPortPreview();
-      document.getElementById("aiConfigModal").classList.add("open");
+      showToast("AI 接口与密钥已统一迁移至管理后台 (/admin → AI 接口)", "info");
     }
 
-    function closeAiConfigModal() {
-      document.getElementById("aiConfigModal").classList.remove("open");
-    }
-
-    function applyAiPreset(providerName, baseUrl, model) {
-      document.getElementById("aiProviderInput").value = providerName;
-      document.getElementById("aiBaseUrlInput").value = baseUrl;
-      document.getElementById("aiModelInput").value = model;
-      document.getElementById("aiEnabledInput").checked = true;
-      state.aiTestResult = null;
-      updateAiPortPreview();
-    }
-
-    function updateAiPortPreview() {
-      const box = document.getElementById("aiPortInfoBox");
-      if (!box) return;
-      const cfg = state.data?.ai_config || {};
-      const parsed = previewEndpointParts(document.getElementById("aiBaseUrlInput")?.value);
-      const test = state.aiTestResult;
-      const statusText = test
-        ? `${test.status} · ${test.tcp_reachable ? `TCP可达 (${test.tcp_latency_ms ?? "--"}ms)` : "TCP不可达"}`
-        : `${cfg.last_check_status || "UNCONFIGURED"}${cfg.last_checked_at ? ` · ${cfg.last_checked_at}` : ""}`;
-      const msgText = test ? test.message : (cfg.last_check_message || "尚未测试端口连通性");
-      const statusCls = (test?.status === "OK" || (!test && cfg.last_check_status === "OK"))
-        ? "down"
-        : ((test?.status === "ERROR" || (!test && cfg.last_check_status === "ERROR")) ? "up" : "");
-
-      if (!parsed) {
-        box.innerHTML = `<div class="full up">当前 Base URL 格式无效，请输入完整 http:// 或 https:// 地址（含主机与可选端口）</div>`;
-        return;
-      }
-      box.innerHTML = `
-        <div><span class="muted">解析主机:</span> <strong>${esc(parsed.host)}</strong></div>
-        <div><span class="muted">目标端口:</span> <strong>${parsed.port}</strong> <span class="muted">(${esc(parsed.scheme.toUpperCase())})</span></div>
-        <div><span class="muted">协议兼容:</span> OpenAI Chat Completions</div>
-        <div><span class="muted">连通状态:</span> <strong class="${statusCls}">${esc(statusText)}</strong></div>
-        <div class="full"><span class="muted">对话端点:</span> ${esc(parsed.chat_endpoint)}</div>
-        <div class="full"><span class="muted">模型发现:</span> ${esc(parsed.models_endpoint)}</div>
-        <div class="full"><span class="muted">检测详情:</span> ${esc(msgText)}</div>
-      `;
-    }
-
-    async function testAiConnection() {
-      const btn = document.getElementById("btnAiTest");
-      if (btn) btn.disabled = true;
-      const payload = {
-        provider_name: document.getElementById("aiProviderInput").value.trim() || "通用 OpenAI 兼容",
-        base_url: document.getElementById("aiBaseUrlInput").value.trim(),
-        model: document.getElementById("aiModelInput").value.trim(),
-        api_key: document.getElementById("aiApiKeyInput").value,
-        clear_api_key: document.getElementById("aiClearKeyInput").checked,
-        timeout_sec: parseInt(document.getElementById("aiTimeoutInput").value, 10) || 30,
-        probe_chat: true,
-      };
-      try {
-        const res = await api("/api/ai/test", { method: "POST", body: JSON.stringify(payload) });
-        state.aiTestResult = res;
-        updateAiPortPreview();
-        const modBox = document.getElementById("aiDiscoveredModels");
-        if (modBox) {
-          if (res.discovered_models?.length) {
-            modBox.innerHTML = `<span class="muted" style="font-size:11px;">发现模型(点击填入):</span>` +
-              res.discovered_models.map((m) =>
-                `<button class="q-pill" onclick="document.getElementById('aiModelInput').value=decodeURIComponent('${encArg(m)}')">${esc(m)}</button>`
-              ).join("");
-          } else {
-            modBox.innerHTML = "";
-          }
-        }
-        showToast(res.message, res.status === "OK" ? "ok" : (res.status === "WARN" ? "warn" : "err"));
-      } catch (e) {
-        showToast(e.message, "err");
-      } finally {
-        if (btn) btn.disabled = false;
-      }
-    }
-
-    async function saveAiConfig() {
-      const payload = {
-        provider_name: document.getElementById("aiProviderInput").value.trim() || "通用 OpenAI 兼容",
-        base_url: document.getElementById("aiBaseUrlInput").value.trim(),
-        model: document.getElementById("aiModelInput").value.trim() || "qwen2.5:14b",
-        api_key: document.getElementById("aiApiKeyInput").value,
-        clear_api_key: document.getElementById("aiClearKeyInput").checked,
-        temperature: parseFloat(document.getElementById("aiTempInput").value) || 0.3,
-        max_tokens: parseInt(document.getElementById("aiMaxTokInput").value, 10) || 1500,
-        timeout_sec: parseInt(document.getElementById("aiTimeoutInput").value, 10) || 30,
-        system_prompt: document.getElementById("aiSysPromptInput").value.trim(),
-        enabled: document.getElementById("aiEnabledInput").checked,
-      };
-      try {
-        const res = await api("/api/ai/config", { method: "POST", body: JSON.stringify(payload) });
-        closeAiConfigModal();
-        applyState(res.state);
-        showToast("AI 端口与模型配置已保存", "ok");
-      } catch (e) {
-        showToast(e.message, "err");
-      }
-    }
+    function closeAiConfigModal() {}
 
     function renderAiMarkdown(raw) {
       let s = esc(raw || "");
@@ -3471,23 +3633,15 @@
       const bar = document.getElementById("aiStatusBar");
       if (!bar) return;
       const ai = state.data?.ai_config || {};
-      const stCls = ai.enabled
-        ? (ai.last_check_status === "OK" ? "down" : (ai.last_check_status === "ERROR" ? "up" : ""))
-        : (ai.platform_trial_available ? "down" : "muted");
-      const modeLbl = ai.enabled
-        ? "已启用(个人接口)"
-        : (ai.platform_trial_available
-          ? `平台体验(${ai.trial_remaining_today ?? 0}/${ai.trial_daily_limit ?? 0}次)`
-          : "未启用(本地规则预览)");
-      const hostLbl = (!ai.enabled && ai.platform_trial_available)
-        ? `平台模型: <strong>${esc(ai.platform_trial_model || "DeepSeek")}</strong>`
-        : `主机: <strong>${esc(ai.host || "127.0.0.1")}:${ai.port || 11434}</strong> · 模型: <strong>${esc(ai.model || "--")}</strong>`;
+      const stCls = (ai.enabled || ai.platform_trial_available) ? "down" : "muted";
+      const modeLbl = ai.platform_trial_available
+        ? `平台 AI 已接入 (今日剩余 ${ai.trial_remaining_today ?? 0}/${ai.trial_daily_limit ?? 0} 次)`
+        : (ai.enabled ? "AI 引擎已就绪" : "本地量化摘要引擎");
       const cur = getSelectedWatchItem();
       const stockLbl = cur ? `${cur.short_name}(${cur.stock_code})` : state.selectedCode;
       bar.innerHTML = `
         <div class="num" style="display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;width:100%;">
-          <span>后台端口: <strong class="${stCls}">${modeLbl}</strong></span>
-          <span>${hostLbl}</span>
+          <span>投研服务: <strong class="${stCls}">${modeLbl}</strong></span>
           <span>当前标的: <strong style="color:var(--accent);">${esc(stockLbl)}</strong></span>
         </div>
       `;
@@ -4483,17 +4637,17 @@
       const codeRow = document.getElementById("regEmailCodeRow");
       const sendBtn = document.getElementById("btnSendRegCode");
       const emailTag = document.getElementById("regEmailTag");
-      if (regTab) regTab.textContent = invRequired ? "邀请码注册" : "邮箱注册";
+      if (regTab) regTab.textContent = invRequired ? "邀请码注册" : (emailVerifyReq && emailConfigured ? "邮箱注册" : "开放注册");
       if (invRow) invRow.style.display = invRequired ? "block" : "none";
-      if (codeRow) codeRow.style.display = emailConfigured ? "block" : "none";
-      if (sendBtn) sendBtn.style.display = emailConfigured ? "inline-flex" : "none";
+      if (codeRow) codeRow.style.display = emailConfigured && emailVerifyReq ? "block" : "none";
+      if (sendBtn) sendBtn.style.display = emailConfigured && emailVerifyReq ? "inline-flex" : "none";
       if (emailTag) {
-        emailTag.textContent = emailVerifyReq && emailConfigured ? "必填 · Resend 验证" : "用于登录与接收预警";
+        emailTag.textContent = emailVerifyReq && emailConfigured ? "必填 · 验证码验证" : "选填 · 用于接收预警";
       }
       if (sub) {
         sub.textContent = invRequired
-          ? "独立模拟账户 · 邀请制内测"
-          : (emailConfigured ? "独立模拟账户 · 支持邮箱验证码注册" : "独立模拟账户 · 开放注册使用");
+          ? "独立模拟账户 · 邀请制协作"
+          : "独立模拟账户 · 开放注册协同";
       }
       const errBox = document.getElementById("authErrBox");
       if (errBox) {
@@ -4938,6 +5092,7 @@
         const initial = await api("/api/state");
         applyState(initial);
         await refreshChartData(true);
+        if (state.selectedCode) loadStockQuickStrip(state.selectedCode);
       } catch (e) {
         showToast("初始化加载失败: " + e.message, "err");
       }
@@ -4958,7 +5113,7 @@
       renderScreenerPanel(document.getElementById("scrPanelMount"));
       renderAiMessages();
       const initialHash = location.hash.replace("#", "").trim();
-      if (initialHash === "screener" || initialHash === "strategy") {
+      if (initialHash === "screener" || initialHash === "strategy" || initialHash === "sim") {
         switchView(initialHash, false);
       }
       try {

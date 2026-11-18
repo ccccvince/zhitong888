@@ -348,6 +348,7 @@ class MarketDataManager:
         self._min_cache: dict[str, tuple[float, list[MinuteBar]]] = {}
         self._zt_pool_cache: dict[str, tuple[float, list[dict]]] = {}
         self._trade_cal_cache: tuple[float, list[str]] | None = None
+        self._concept_cache: dict[str, tuple[float, list[str]]] = {}
 
     def get_cached_quotes(self, mode: MarketMode = MarketMode.REAL) -> dict[str, QuoteSnapshot]:
         with self._lock:
@@ -1141,3 +1142,228 @@ class MarketDataManager:
             scanned_at=now_str(),
             items=items,
         )
+
+    @staticmethod
+    def _summarize_daily_technicals(daily: list[dict], current_price: float) -> dict[str, float | str | None]:
+        """Compute MA5/MA10/MA20, 5d/20d returns, 20d range, and MACD signal from daily bars."""
+        if not daily:
+            return {
+                "ma5": None,
+                "ma10": None,
+                "ma20": None,
+                "change_5d_pct": None,
+                "change_20d_pct": None,
+                "high_20d": None,
+                "low_20d": None,
+                "macd_signal": "数据不足",
+            }
+        last = daily[-1]
+        tail_20 = daily[-20:]
+        ref_p = current_price if current_price > 0 else float(last.get("close") or 0)
+        c5 = float(daily[-6]["close"]) if len(daily) >= 6 else float(daily[0]["close"])
+        c20 = float(tail_20[0]["close"]) if tail_20 else float(daily[0]["close"])
+        chg5 = round(((ref_p - c5) / c5) * 100, 2) if c5 > 0 else None
+        chg20 = round(((ref_p - c20) / c20) * 100, 2) if c20 > 0 else None
+        dif = float(last.get("dif") or 0.0)
+        dea = float(last.get("dea") or 0.0)
+        macd = float(last.get("macd") or 0.0)
+        if dif > dea and macd > 0:
+            macd_signal = "MACD 多头 (DIF>DEA)"
+        elif dif < dea and macd < 0:
+            macd_signal = "MACD 空头 (DIF<DEA)"
+        else:
+            macd_signal = "MACD 震荡走平"
+        return {
+            "ma5": last.get("ma5"),
+            "ma10": last.get("ma10"),
+            "ma20": last.get("ma20"),
+            "change_5d_pct": chg5,
+            "change_20d_pct": chg20,
+            "high_20d": round(max(float(b["high"]) for b in tail_20), 2),
+            "low_20d": round(min(float(b["low"]) for b in tail_20), 2),
+            "macd_signal": macd_signal,
+        }
+
+    def fetch_index_detail(self, symbol: str, mode: MarketMode = MarketMode.REAL) -> dict:
+        """Fetch live OHLCV snapshot + daily K-line bars & technicals for a major A-share index."""
+        sym = symbol.strip().lower()
+        meta = INDEX_BY_SYMBOL.get(sym)
+        if not meta:
+            raise ValueError(f"未知指数代码: {symbol}")
+
+        # Start from cached or seed snapshot
+        cached_list = self.get_cached_indices(mode)
+        snap = next((it for it in cached_list if it.symbol == sym), None) or self._build_seed_index(meta)
+        open_p = snap.pre_close
+        high_p = max(snap.price, snap.pre_close)
+        low_p = min(snap.price, snap.pre_close)
+        volume = 0.0
+        amplitude = round(((high_p - low_p) / snap.pre_close) * 100, 2) if snap.pre_close > 0 else 0.0
+
+        if self.network_enabled:
+            try:
+                resp = httpx.get(
+                    f"https://qt.gtimg.cn/q={sym}",
+                    headers={"Referer": "https://gu.qq.com/"},
+                    timeout=3.5,
+                )
+                if resp.status_code == 200:
+                    text = resp.content.decode("gbk", errors="ignore")
+                    parsed_map = parse_tencent_indices(text)
+                    if sym in parsed_map:
+                        snap = parsed_map[sym]
+                    for line_sym, parts in _split_tencent_lines(text):
+                        if line_sym == sym and len(parts) > 35:
+                            open_p = _safe_float(parts[5], snap.pre_close)
+                            high_p = _safe_float(parts[33], snap.price)
+                            low_p = _safe_float(parts[34], snap.price)
+                            volume = _safe_float(parts[6]) * 100.0
+                            amplitude = (
+                                round(_safe_float(parts[43]), 2)
+                                if len(parts) > 43 and _safe_float(parts[43]) > 0
+                                else (
+                                    round(((high_p - low_p) / snap.pre_close) * 100, 2)
+                                    if snap.pre_close > 0
+                                    else 0.0
+                                )
+                            )
+            except Exception:
+                pass
+
+        # Fetch daily bars via Tencent index kline API (cached in _daily_cache under f"IDX:{sym}")
+        cache_key = f"IDX:{sym}"
+        now_ts = time.time()
+        daily: list[dict] = []
+        with self._lock:
+            cached = self._daily_cache.get(cache_key)
+            if cached and (now_ts - cached[0]) < 300.0:
+                daily = list(cached[2])
+
+        if not daily:
+            raw_bars: list[dict] = []
+            if self.network_enabled:
+                try:
+                    kresp = httpx.get(
+                        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get",
+                        params={"param": f"{sym},day,,,60"},
+                        timeout=4.0,
+                    )
+                    if kresp.status_code == 200:
+                        kdata = (kresp.json().get("data") or {}).get(sym) or {}
+                        rows = kdata.get("day") or kdata.get("qfqday") or []
+                        prev_c = 0.0
+                        for row in rows:
+                            if len(row) < 6:
+                                continue
+                            o = _safe_float(str(row[1]))
+                            c = _safe_float(str(row[2]))
+                            h = _safe_float(str(row[3]))
+                            l = _safe_float(str(row[4]))
+                            v = _safe_float(str(row[5])) * 100.0
+                            pct = round(((c - prev_c) / prev_c) * 100, 2) if prev_c > 0 else 0.0
+                            raw_bars.append(
+                                {
+                                    "trade_date": str(row[0]),
+                                    "open": round(o, 2),
+                                    "close": round(c, 2),
+                                    "high": round(h, 2),
+                                    "low": round(l, 2),
+                                    "volume": v,
+                                    "amount": round(v * c, 2),
+                                    "change_pct": pct,
+                                    "turnover_ratio": 0.0,
+                                }
+                            )
+                            prev_c = c
+                except Exception:
+                    raw_bars = []
+
+            if not raw_bars:
+                base = snap.pre_close or snap.price
+                rng = random.Random(sym)
+                weekdays: list[str] = []
+                cursor = beijing_now()
+                while len(weekdays) < 80:
+                    if cursor.weekday() < 5:
+                        weekdays.append(cursor.strftime("%Y-%m-%d"))
+                    cursor -= timedelta(days=1)
+                weekdays.reverse()
+                cur = base * 0.96
+                for d in weekdays:
+                    o = round(cur, 2)
+                    ret = ((base - cur) / base) * 0.1 + rng.uniform(-0.014, 0.015)
+                    c = round(max(100.0, o * (1.0 + ret)), 2)
+                    raw_bars.append(
+                        {
+                            "trade_date": d,
+                            "open": o,
+                            "high": round(max(o, c) * (1.0 + rng.uniform(0.001, 0.009)), 2),
+                            "low": round(min(o, c) * (1.0 - rng.uniform(0.001, 0.009)), 2),
+                            "close": c,
+                            "volume": float(rng.randint(500_000, 2_000_000)),
+                            "amount": snap.amount,
+                            "change_pct": round(((c - o) / o) * 100, 2) if o > 0 else 0.0,
+                            "turnover_ratio": 0.0,
+                        }
+                    )
+                    cur = c
+
+            daily = compute_kline_indicators(raw_bars)
+            with self._lock:
+                self._daily_cache[cache_key] = (now_ts, len(daily), daily)
+
+        return {
+            "kind": "INDEX",
+            "symbol": snap.symbol,
+            "code": snap.code,
+            "name": snap.name,
+            "snapshot": {
+                **snap.model_dump(),
+                "open": round(open_p, 2),
+                "high": round(high_p, 2),
+                "low": round(low_p, 2),
+                "volume": volume,
+                "amplitude": amplitude,
+            },
+            "daily": daily[-45:],
+            "summary": self._summarize_daily_technicals(daily, snap.price),
+        }
+
+    def fetch_stock_detail(self, stock_code: str, mode: MarketMode = MarketMode.REAL) -> dict:
+        """Fetch comprehensive quote, technical summary, concepts, and recent daily bars for a single stock."""
+        code = stock_code.strip()
+        q = self.get_quote(code, mode=mode)
+        if not q:
+            q = self.refresh_quotes([(code, code)], mode=mode).get(code) or self._build_seed_quote(code)
+
+        daily = self.fetch_daily_kline(code, days=60)
+        concepts: list[str] = []
+        now_ts = time.time()
+        with self._lock:
+            cc = self._concept_cache.get(code)
+            if cc and (now_ts - cc[0]) < 3600.0:
+                concepts = list(cc[1])
+                cc_hit = True
+            else:
+                cc_hit = False
+
+        if not cc_hit and self.network_enabled:
+            try:
+                cdf = adata.stock.info.get_concept_ths(code)
+                if cdf is not None and not cdf.empty and "name" in cdf.columns:
+                    concepts = [str(x).strip() for x in cdf["name"].dropna().tolist() if str(x).strip()][:8]
+            except Exception:
+                concepts = []
+            with self._lock:
+                self._concept_cache[code] = (now_ts, concepts)
+
+        return {
+            "kind": "STOCK",
+            "stock_code": q.stock_code,
+            "short_name": q.short_name,
+            "board": classify_board(q.stock_code),
+            "concepts": concepts,
+            "quote": q.model_dump(),
+            "daily": daily[-45:],
+            "summary": self._summarize_daily_technicals(daily, q.price),
+        }

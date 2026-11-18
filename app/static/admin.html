@@ -709,10 +709,19 @@
       .trend-row { grid-template-columns: 48px 1fr 24px 1fr 24px 1fr 24px; gap: 6px; }
     }
     @media (max-width: 540px) {
+      html, body { overflow-x: clip; }
+      .topbar-inner { padding: 0 14px; }
+      .container { padding: 20px 14px 48px; }
+      .section-card { padding: 18px 16px; }
+      .pine-banner { padding: 18px 16px; }
+      .pine-url { font-size: 15px; }
       .kpi-grid { grid-template-columns: 1fr; }
-      .bar-row { grid-template-columns: 76px 1fr 100px; }
+      .bar-row { grid-template-columns: 76px 1fr 90px; gap: 8px; }
+      .trend-row { grid-template-columns: 42px 1fr 20px 1fr 20px 1fr 20px; gap: 4px; font-size: 11px; }
       .service-status { display: none; }
-      .hero-title { font-size: 28px; }
+      .hero-title { font-size: 26px; }
+      .tier1-actions { gap: 8px; }
+      #topAdminUser { display: none; }
     }
   </style>
 </head>
@@ -991,7 +1000,7 @@
                   <span id="pubAiKeyMaskPill" class="pill mono">Key: 未配置</span>
                 </div>
                 <div class="option-desc">
-                  当用户尚未填写个人 OpenAI 兼容 Key 时，自动消耗此处配置的平台公共大模型额度；若用户在前端「AI端口」填写了个人 Key，则优先使用个人 Key 且不占用平台额度。
+                  前台用户不再需要自行配置 API 接口与端口，所有 AI 大模型接口地址、密钥、模型参数与每日配额统一由此处管理并即时下发生效。
                 </div>
               </div>
             </div>
@@ -1012,8 +1021,8 @@
               <input id="pubAiProvider" class="field-input" placeholder="如 智瞳公共体验 AI" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="pubAiDailyLimit">每用户每日体验次数（0 表示关闭体验）</label>
-              <input id="pubAiDailyLimit" class="field-input mono" type="number" min="0" max="1000" value="10" />
+              <label class="form-label" for="pubAiDailyLimit">每用户每日体验次数（0 表示关闭；可设 9999）</label>
+              <input id="pubAiDailyLimit" class="field-input mono" type="number" min="0" max="10000" value="10" />
             </div>
             <div class="form-group">
               <label class="form-label" for="pubAiBaseUrl">接口地址（Base URL）</label>
@@ -1026,6 +1035,22 @@
             <div class="form-group full">
               <label class="form-label" for="pubAiApiKey">API Key（留空表示保留当前已存密钥）</label>
               <input id="pubAiApiKey" class="field-input mono" type="password" autocomplete="new-password" placeholder="sk-...（输入新密钥将覆盖原密钥；不修改请留空）" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pubAiTemp">Temperature (0 ~ 2)</label>
+              <input id="pubAiTemp" class="field-input mono" type="number" step="0.1" min="0" max="2" value="0.3" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pubAiMaxTok">Max Tokens (128 ~ 8192)</label>
+              <input id="pubAiMaxTok" class="field-input mono" type="number" step="100" min="128" max="8192" value="1500" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pubAiTimeout">请求超时 (秒)</label>
+              <input id="pubAiTimeout" class="field-input mono" type="number" min="3" max="180" value="30" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pubAiSysPrompt">自定义系统提示词（留空使用内置投研规则）</label>
+              <input id="pubAiSysPrompt" class="field-input" placeholder="留空即使用内置 A 股 T+1 / 指标投研提示词" />
             </div>
           </div>
 
@@ -1482,6 +1507,10 @@
       document.getElementById("pubAiBaseUrl").value = pubAi.base_url || "";
       document.getElementById("pubAiModel").value = pubAi.model || "";
       document.getElementById("pubAiDailyLimit").value = pubAi.daily_limit ?? 10;
+      document.getElementById("pubAiTemp").value = pubAi.temperature ?? 0.3;
+      document.getElementById("pubAiMaxTok").value = pubAi.max_tokens ?? 1500;
+      document.getElementById("pubAiTimeout").value = pubAi.timeout_sec ?? 30;
+      document.getElementById("pubAiSysPrompt").value = pubAi.system_prompt || "";
       document.getElementById("pubAiApiKey").value = "";
       document.getElementById("pubAiClearKey").checked = false;
 
@@ -1599,6 +1628,10 @@
             model: document.getElementById("pubAiModel").value.trim(),
             api_key: document.getElementById("pubAiApiKey").value.trim(),
             daily_limit: Number(document.getElementById("pubAiDailyLimit").value || 0),
+            temperature: Number(document.getElementById("pubAiTemp").value ?? 0.3),
+            max_tokens: Number(document.getElementById("pubAiMaxTok").value || 1500),
+            timeout_sec: Number(document.getElementById("pubAiTimeout").value || 30),
+            system_prompt: document.getElementById("pubAiSysPrompt").value.trim(),
             clear_api_key: document.getElementById("pubAiClearKey").checked,
           }),
         });

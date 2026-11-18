@@ -980,12 +980,29 @@ class Database:
             daily_limit = max(0, int(raw_limit)) if raw_limit != "" else settings.public_ai_daily_limit
         except ValueError:
             daily_limit = settings.public_ai_daily_limit
+        try:
+            temperature = float(self.get_system_setting("public_ai_temperature", "") or 0.3)
+        except ValueError:
+            temperature = 0.3
+        try:
+            max_tokens = int(self.get_system_setting("public_ai_max_tokens", "") or 1500)
+        except ValueError:
+            max_tokens = 1500
+        try:
+            timeout_sec = int(self.get_system_setting("public_ai_timeout_sec", "") or 30)
+        except ValueError:
+            timeout_sec = 30
+        system_prompt = self.get_system_setting("public_ai_system_prompt", "")
         return {
             "provider_name": provider or "智瞳公共体验 AI",
             "base_url": base_url,
             "model": model,
             "api_key": api_key,
             "daily_limit": daily_limit,
+            "temperature": max(0.0, min(2.0, temperature)),
+            "max_tokens": max(128, min(8192, max_tokens)),
+            "timeout_sec": max(3, min(180, timeout_sec)),
+            "system_prompt": system_prompt,
         }
 
     def set_public_ai_config(
@@ -997,12 +1014,20 @@ class Database:
         daily_limit: int,
         api_key: str = "",
         clear_api_key: bool = False,
+        temperature: float = 0.3,
+        max_tokens: int = 1500,
+        timeout_sec: int = 30,
+        system_prompt: str = "",
     ) -> dict[str, Any]:
         """Persist platform trial AI config in system_settings."""
         self.set_system_setting("public_ai_provider", (provider_name or "智瞳公共体验 AI").strip()[:60])
         self.set_system_setting("public_ai_base_url", (base_url or "").strip()[:300])
         self.set_system_setting("public_ai_model", (model or "").strip()[:120])
-        self.set_system_setting("public_ai_daily_limit", str(max(0, min(int(daily_limit), 1000))))
+        self.set_system_setting("public_ai_daily_limit", str(max(0, min(int(daily_limit), 10000))))
+        self.set_system_setting("public_ai_temperature", str(max(0.0, min(2.0, float(temperature)))))
+        self.set_system_setting("public_ai_max_tokens", str(max(128, min(8192, int(max_tokens)))))
+        self.set_system_setting("public_ai_timeout_sec", str(max(3, min(180, int(timeout_sec)))))
+        self.set_system_setting("public_ai_system_prompt", (system_prompt or "").strip()[:4000])
         if clear_api_key:
             self.set_system_setting("public_ai_api_key", "__CLEARED__")
         elif (api_key or "").strip():
