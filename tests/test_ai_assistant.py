@@ -6,7 +6,12 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.engine.ai_assistant import AIAssistantService, mask_api_key, parse_ai_endpoint
+from app.engine.ai_assistant import (
+    AIAssistantService,
+    mask_api_key,
+    parse_ai_endpoint,
+    parse_custom_headers,
+)
 from app.models import (
     AIAskRequest,
     AIConfigTestRequest,
@@ -318,3 +323,120 @@ def test_ai_ask_llm_with_drafts_and_local_fallback(tmp_path: Path) -> None:
     assert err_ans.ok is False
     assert err_ans.source == "llm_error"
     assert "Upstream overloaded" in err_ans.reply
+
+
+def test_custom_ai_protocols_exact_url_and_headers(tmp_path: Path) -> None:
+    # 1. Custom non-mainstream paths & exact '#' URL override
+    ep_custom = parse_ai_endpoint("https://custom-relay.top:8443/gateway/v2")
+    assert ep_custom["chat_endpoint"] == "https://custom-relay.top:8443/gateway/v2/chat/completions"
+
+    ep_exact = parse_ai_endpoint("https://worker.example.com/my-fn#")
+    assert ep_exact["exact_endpoint"] is True
+    assert ep_exact["base_url"] == "https://worker.example.com/my-fn#"
+    assert ep_exact["chat_endpoint"] == "https://worker.example.com/my-fn"
+
+    ep_claude = parse_ai_endpoint("https://claude-proxy.top/v1", api_format="anthropic_messages")
+    assert ep_claude["chat_endpoint"] == "https://claude-proxy.top/v1/messages"
+
+    ep_resp = parse_ai_endpoint("https://resp-proxy.top/openai", api_format="openai_responses")
+    assert ep_resp["chat_endpoint"] == "https://resp-proxy.top/openai/responses"
+
+    # 2. Custom headers parsing (JSON and key: value lines)
+    assert parse_custom_headers('{"X-Relay-Auth": "tok-1", "HTTP-Referer": "https://a.com"}') == {
+        "X-Relay-Auth": "tok-1",
+        "HTTP-Referer": "https://a.com",
+    }
+    assert parse_custom_headers("X-Token: abc\nX-App: zhitong") == {
+        "X-Token": "abc",
+        "X-App": "zhitong",
+    }
+    with pytest.raises(ValueError, match="JSON"):
+        parse_custom_headers("{bad json")
+
+    # 3. Platform public AI with Anthropic Messages protocol, keyless relay & custom headers
+    db = Database(tmp_path / "custom_proto.db")
+    db.set_public_ai_config(
+        provider_name="自定义 Claude 公益站",
+        api_format="anthropic_messages",
+        base_url="https://free-claude-relay.example.com/custom",
+        model="claude-sonnet-4-5",
+        daily_limit=0,
+        api_key="",
+        custom_headers="X-Relay-Pass: secret-99",
+        enabled=True,
+    )
+
+    seen_reqs: list[tuple[str, dict[str, str], dict]] = []
+
+    def proto_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/models") and request.method == "GET":
+            return httpx.Response(200, json={"data": [{"id": "custom-alpha"}, {"id": "claude-sonnet-4-5"}]})
+        body = json.loads(request.content.decode("utf-8"))
+        seen_reqs.append((str(request.url), dict(request.headers), body))
+        if request.url.path.endswith("/messages"):
+            return httpx.Response(
+                200,
+                json={"model": "claude-sonnet-4-5", "content": [{"type": "text", "text": "**自定义通道诊断成功**"}]},
+            )
+        if request.url.path.endswith("/responses"):
+            return httpx.Response(200, json={"model": "custom-o3", "output_text": "**Responses OK**"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "**Exact OK**"}}]})
+
+    svc = AIAssistantService(
+        db,
+        tcp_probe=lambda h, p, t: (True, 6.2, "ok"),
+        http_client_factory=lambda t: httpx.Client(transport=httpx.MockTransport(proto_handler), timeout=t),
+    )
+
+    # Discover models even when model is left blank
+    disc = svc.test_platform_ai(
+        base_url="https://free-claude-relay.example.com/custom",
+        model="",
+    )
+    assert disc["ok"] is True
+    assert disc["chat_probe_ok"] is None
+    assert disc["discovered_models"] == ["custom-alpha", "claude-sonnet-4-5"]
+
+    # Live ask via Anthropic Messages + custom header without requiring API key
+    state_payload = {
+        "account": {
+            "current_trade_date": "2026-11-18",
+            "market_mode": "REAL",
+            "total_assets": 1000000.0,
+            "available_cash": 1000000.0,
+            "market_value": 0.0,
+            "total_pnl": 0.0,
+            "total_pnl_pct": 0.0,
+        },
+        "risk_config": {"max_single_position_pct": 100.0, "max_order_amount": 0.0, "max_total_loss_pct": 0.0},
+        "watchlist": [],
+        "positions": [],
+        "orders": [],
+        "trades": [],
+        "strategies": [],
+    }
+    res_anth = svc.ask(AIAskRequest(task_type="CHAT", prompt="分析"), state_payload)
+    assert res_anth.ok is True
+    assert res_anth.source == "platform_trial_llm"
+    assert "自定义通道诊断成功" in res_anth.reply
+    url_hit, hdrs_hit, payload_hit = seen_reqs[-1]
+    assert url_hit == "https://free-claude-relay.example.com/custom/messages"
+    assert hdrs_hit.get("x-relay-pass") == "secret-99"
+    assert hdrs_hit.get("anthropic-version") == "2023-06-01"
+    assert "system" in payload_hit
+
+    # Switch to OpenAI Responses + exact URL '#' mode
+    db.set_public_ai_config(
+        provider_name="Responses 网关",
+        api_format="openai_responses",
+        base_url="https://resp.example.com/v1",
+        model="custom-o3",
+        daily_limit=0,
+        api_key="sk-custom-test",
+        enabled=True,
+    )
+    res_resp = svc.ask(AIAskRequest(task_type="CHAT", prompt="hi"), state_payload)
+    assert res_resp.ok is True
+    assert "Responses OK" in res_resp.reply
+    assert seen_reqs[-1][0] == "https://resp.example.com/v1/responses"
+    assert "input" in seen_reqs[-1][2]

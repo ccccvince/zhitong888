@@ -3745,7 +3745,7 @@
       const modeLbl = ai.platform_trial_available
         ? (ai.trial_daily_limit > 0
           ? `平台 AI 已接入 (今日剩余 ${ai.trial_remaining_today ?? 0}/${ai.trial_daily_limit} 次)`
-          : `平台 AI 已接入 (${ai.platform_trial_model || "大模型"} · 不限次)`)
+          : `平台 AI 已接入 (${esc(ai.platform_trial_model || "大模型")} · 不限次)`)
         : (ai.enabled ? "AI 引擎已就绪" : "本地量化摘要引擎");
       const cur = getSelectedWatchItem();
       const stockLbl = cur ? `${cur.short_name}(${cur.stock_code})` : state.selectedCode;

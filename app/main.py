@@ -14,7 +14,13 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.engine.ai_assistant import AIAssistantService, mask_api_key, parse_ai_endpoint
+from app.engine.ai_assistant import (
+    AIAssistantService,
+    mask_api_key,
+    normalize_ai_format,
+    parse_ai_endpoint,
+    parse_custom_headers,
+)
 from app.engine.alert_engine import AlertEngine
 from app.engine.backtester import run_backtest
 from app.engine.clock import MarketClock
@@ -842,6 +848,42 @@ def create_app(
 
     # --- Admin Routes ---
 
+    def _serialize_public_ai(pub_ai: dict[str, Any]) -> dict[str, Any]:
+        pub_key = str(pub_ai.get("api_key") or "")
+        raw_hdrs = str(pub_ai.get("custom_headers") or "")
+        hdr_keys: list[str] = []
+        if raw_hdrs:
+            try:
+                hdr_keys = list(parse_custom_headers(raw_hdrs).keys())
+            except ValueError:
+                hdr_keys = []
+        fmt = normalize_ai_format(pub_ai.get("api_format"))
+        base = str(pub_ai.get("base_url") or "")
+        chat_ep = ""
+        if base:
+            try:
+                chat_ep = parse_ai_endpoint(base, allow_private=True, api_format=fmt)["chat_endpoint"]
+            except ValueError:
+                chat_ep = ""
+        return {
+            "enabled": bool(pub_ai.get("enabled", True)),
+            "provider_name": str(pub_ai.get("provider_name") or "自定义 AI 接口"),
+            "api_format": fmt,
+            "base_url": base,
+            "chat_endpoint": chat_ep,
+            "model": str(pub_ai.get("model") or ""),
+            "daily_limit": int(pub_ai.get("daily_limit") or 0),
+            "temperature": float(pub_ai.get("temperature") if pub_ai.get("temperature") is not None else 0.3),
+            "max_tokens": int(pub_ai.get("max_tokens") or 1500),
+            "timeout_sec": int(pub_ai.get("timeout_sec") or 30),
+            "system_prompt": str(pub_ai.get("system_prompt") or ""),
+            "has_api_key": bool(pub_key),
+            "api_key_masked": mask_api_key(pub_key) if pub_key else "免密钥/未设置",
+            "has_custom_headers": bool(hdr_keys),
+            "custom_header_keys": hdr_keys,
+            "configured": bool(pub_ai.get("enabled", True) and base and pub_ai.get("model")),
+        }
+
     @app.get("/api/admin/overview")
     async def admin_overview(admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
         inv_req = ctx.is_invite_required()
@@ -852,7 +894,6 @@ def create_app(
             uptime_seconds=time.monotonic() - ctx.started_monotonic,
         )
         pub_ai = ctx.db.get_public_ai_config()
-        pub_key = str(pub_ai.get("api_key") or "")
         return {
             "open_register": not inv_req,
             "invite_required": inv_req,
@@ -865,25 +906,7 @@ def create_app(
                 "email_verification_required": ctx.is_email_verification_required(),
                 "site_url": settings.site_url,
             },
-            "public_ai": {
-                "enabled": bool(pub_ai.get("enabled", True)),
-                "provider_name": str(pub_ai.get("provider_name") or "智瞳公共体验 AI"),
-                "base_url": str(pub_ai.get("base_url") or ""),
-                "model": str(pub_ai.get("model") or ""),
-                "daily_limit": int(pub_ai.get("daily_limit") or 0),
-                "temperature": float(pub_ai.get("temperature") if pub_ai.get("temperature") is not None else 0.3),
-                "max_tokens": int(pub_ai.get("max_tokens") or 1500),
-                "timeout_sec": int(pub_ai.get("timeout_sec") or 30),
-                "system_prompt": str(pub_ai.get("system_prompt") or ""),
-                "has_api_key": bool(pub_key),
-                "api_key_masked": mask_api_key(pub_key),
-                "configured": bool(
-                    pub_ai.get("enabled", True)
-                    and pub_key
-                    and pub_ai.get("base_url")
-                    and pub_ai.get("model")
-                ),
-            },
+            "public_ai": _serialize_public_ai(pub_ai),
             "announcement": ctx.db.get_announcement(),
             "telemetry": telemetry,
             "users": ctx.db.list_users(),
@@ -904,49 +927,43 @@ def create_app(
         req: AdminPublicAIConfigRequest, admin: dict[str, Any] = Depends(require_admin)
     ) -> dict[str, Any]:
         clean_base = req.base_url.strip()
+        fmt = normalize_ai_format(req.api_format)
         if clean_base:
             try:
                 ep = parse_ai_endpoint(
                     clean_base,
                     allow_private=ctx.allow_private_ai_endpoints,
                     resolve_dns=not ctx.allow_private_ai_endpoints,
+                    api_format=fmt,
                 )
                 clean_base = ep["base_url"]
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+        clean_headers = req.custom_headers.strip()
+        if clean_headers and not req.clear_custom_headers:
+            try:
+                parse_custom_headers(clean_headers)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         saved = ctx.db.set_public_ai_config(
             provider_name=req.provider_name,
+            api_format=fmt,
             base_url=clean_base,
             model=req.model.strip(),
             daily_limit=req.daily_limit,
             api_key=req.api_key,
             clear_api_key=req.clear_api_key,
+            custom_headers=clean_headers,
+            clear_custom_headers=req.clear_custom_headers,
             temperature=req.temperature,
             max_tokens=req.max_tokens,
             timeout_sec=req.timeout_sec,
             system_prompt=req.system_prompt,
             enabled=req.enabled,
         )
-        pub_key = str(saved.get("api_key") or "")
-        return {
-            "ok": True,
-            "public_ai": {
-                "enabled": bool(saved.get("enabled", True)),
-                "provider_name": saved["provider_name"],
-                "base_url": saved["base_url"],
-                "model": saved["model"],
-                "daily_limit": saved["daily_limit"],
-                "temperature": saved["temperature"],
-                "max_tokens": saved["max_tokens"],
-                "timeout_sec": saved["timeout_sec"],
-                "system_prompt": saved["system_prompt"],
-                "has_api_key": bool(pub_key),
-                "api_key_masked": mask_api_key(pub_key),
-                "configured": bool(
-                    saved.get("enabled", True) and pub_key and saved["base_url"] and saved["model"]
-                ),
-            },
-        }
+        for active_uid in list(ctx.user_clients.keys()):
+            await ctx.broadcast_state(user_id=active_uid)
+        return {"ok": True, "public_ai": _serialize_public_ai(saved)}
 
     @app.post("/api/admin/public-ai/test")
     async def admin_test_public_ai(
@@ -955,9 +972,13 @@ def create_app(
         try:
             return await asyncio.to_thread(
                 ctx.ai_assistant.test_platform_ai,
+                api_format=req.api_format,
                 base_url=req.base_url.strip(),
                 model=req.model.strip(),
                 api_key=req.api_key.strip(),
+                custom_headers=req.custom_headers,
+                clear_api_key=req.clear_api_key,
+                clear_custom_headers=req.clear_custom_headers,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

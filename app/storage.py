@@ -965,6 +965,8 @@ class Database:
     def get_public_ai_config(self) -> dict[str, Any]:
         """Return merged platform trial AI config (DB system_settings overrides env defaults)."""
         provider = self.get_system_setting("public_ai_provider", "").strip() or settings.public_ai_provider
+        raw_fmt = self.get_system_setting("public_ai_api_format", "").strip().lower()
+        api_format = raw_fmt if raw_fmt in ("openai_chat", "openai_responses", "anthropic_messages") else "openai_chat"
         base_url = self.get_system_setting("public_ai_base_url", "").strip() or settings.public_ai_base_url
         model = self.get_system_setting("public_ai_model", "").strip() or settings.public_ai_model
         stored_key = self.get_system_setting("public_ai_api_key", "")
@@ -972,6 +974,8 @@ class Database:
             api_key = ""
         else:
             api_key = stored_key.strip() or settings.public_ai_api_key
+        stored_headers = self.get_system_setting("public_ai_custom_headers", "")
+        custom_headers = "" if stored_headers == "__CLEARED__" else stored_headers.strip()
         raw_limit = self.get_system_setting("public_ai_daily_limit", "").strip()
         try:
             daily_limit = max(0, int(raw_limit)) if raw_limit != "" else settings.public_ai_daily_limit
@@ -994,10 +998,12 @@ class Database:
         enabled = True if raw_enabled == "" else (raw_enabled == "true")
         return {
             "enabled": enabled,
-            "provider_name": provider or "智瞳公共体验 AI",
+            "provider_name": provider or "自定义 AI 接口",
+            "api_format": api_format,
             "base_url": base_url,
             "model": model,
             "api_key": api_key,
+            "custom_headers": custom_headers,
             "daily_limit": daily_limit,
             "temperature": max(0.0, min(2.0, temperature)),
             "max_tokens": max(128, min(8192, max_tokens)),
@@ -1009,11 +1015,14 @@ class Database:
         self,
         *,
         provider_name: str,
+        api_format: str = "openai_chat",
         base_url: str,
         model: str,
         daily_limit: int,
         api_key: str = "",
         clear_api_key: bool = False,
+        custom_headers: str = "",
+        clear_custom_headers: bool = False,
         temperature: float = 0.3,
         max_tokens: int = 1500,
         timeout_sec: int = 30,
@@ -1021,9 +1030,13 @@ class Database:
         enabled: bool = True,
     ) -> dict[str, Any]:
         """Persist platform trial AI config in system_settings."""
+        clean_fmt = (api_format or "openai_chat").strip().lower()
+        if clean_fmt not in ("openai_chat", "openai_responses", "anthropic_messages"):
+            clean_fmt = "openai_chat"
         self.set_system_setting("public_ai_enabled", "true" if enabled else "false")
-        self.set_system_setting("public_ai_provider", (provider_name or "智瞳公共体验 AI").strip()[:60])
-        self.set_system_setting("public_ai_base_url", (base_url or "").strip()[:300])
+        self.set_system_setting("public_ai_provider", (provider_name or "自定义 AI 接口").strip()[:60])
+        self.set_system_setting("public_ai_api_format", clean_fmt)
+        self.set_system_setting("public_ai_base_url", (base_url or "").strip()[:500])
         self.set_system_setting("public_ai_model", (model or "").strip()[:120])
         self.set_system_setting("public_ai_daily_limit", str(max(0, min(int(daily_limit), 10000))))
         self.set_system_setting("public_ai_temperature", str(max(0.0, min(2.0, float(temperature)))))
@@ -1034,6 +1047,10 @@ class Database:
             self.set_system_setting("public_ai_api_key", "__CLEARED__")
         elif (api_key or "").strip():
             self.set_system_setting("public_ai_api_key", api_key.strip())
+        if clear_custom_headers:
+            self.set_system_setting("public_ai_custom_headers", "__CLEARED__")
+        elif (custom_headers or "").strip():
+            self.set_system_setting("public_ai_custom_headers", custom_headers.strip()[:2000])
         return self.get_public_ai_config()
 
     def get_announcement(self) -> dict[str, Any]:

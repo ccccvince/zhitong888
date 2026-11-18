@@ -519,6 +519,40 @@ def test_admin_page_telemetry_public_ai_and_announcement(tmp_path: Path) -> None
         )
         assert dis.status_code == 200 and dis.json()["public_ai"]["configured"] is False
 
+        # Arbitrary custom AI endpoint with custom path/format/headers & keyless proxy works
+        bad_hdr = admin_cli.post(
+            "/api/admin/public-ai",
+            json={
+                "enabled": True,
+                "provider_name": "BadHdr",
+                "base_url": "https://my-custom-ai.example.com/custom-v2",
+                "model": "my-model-1",
+                "custom_headers": "{invalid json",
+            },
+        )
+        assert bad_hdr.status_code == 400
+
+        custom_ai = admin_cli.post(
+            "/api/admin/public-ai",
+            json={
+                "enabled": True,
+                "provider_name": "自有网关",
+                "api_format": "anthropic_messages",
+                "base_url": "https://my-custom-ai.example.com/custom-v2",
+                "model": "custom-claude-relay",
+                "clear_api_key": True,
+                "custom_headers": "X-Proxy-Token: secret123",
+                "daily_limit": 0,
+            },
+        )
+        assert custom_ai.status_code == 200
+        cp = custom_ai.json()["public_ai"]
+        assert cp["configured"] is True
+        assert cp["api_format"] == "anthropic_messages"
+        assert cp["chat_endpoint"] == "https://my-custom-ai.example.com/custom-v2/messages"
+        assert cp["has_custom_headers"] is True
+        assert cp["custom_header_keys"] == ["X-Proxy-Token"]
+
         # Index & stock instant detail endpoints
         idx_res = user_cli.get("/api/indices/sh000001/detail")
         assert idx_res.status_code == 200

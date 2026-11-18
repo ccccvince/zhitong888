@@ -699,6 +699,20 @@
     }
     .diag-box.ok { border-color: rgba(30, 67, 59, 0.35); background: rgba(30, 67, 59, 0.06); color: var(--pine); }
     .diag-box.err { border-color: rgba(166, 58, 43, 0.35); background: rgba(166, 58, 43, 0.06); color: var(--cinnabar); }
+    .model-pick-list { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .model-pick-chip {
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(30, 67, 59, 0.28);
+      background: var(--bg-card);
+      color: var(--ink);
+      font-size: 11.5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      cursor: pointer;
+      transition: all 0.14s;
+    }
+    .model-pick-chip:hover { border-color: var(--cinnabar); color: var(--cinnabar); background: rgba(166, 58, 43, 0.05); }
+    .field-hint { margin-top: 5px; font-size: 11.5px; color: var(--ink-light); line-height: 1.5; }
 
     /* Responsive */
     @media (max-width: 860px) {
@@ -986,8 +1000,8 @@
         <div class="section-card">
           <div class="section-head">
             <div>
-              <div class="section-eyebrow">公共体验接口</div>
-              <h2 class="section-title">平台 AI 模型与额度配置</h2>
+              <div class="section-eyebrow">自由自定义接入</div>
+              <h2 class="section-title">平台 AI 接口与模型配置</h2>
             </div>
             <span id="pubAiStatusPill" class="pill">未配置</span>
           </div>
@@ -996,22 +1010,26 @@
             <div class="option-card selected" style="cursor:default;">
               <div style="flex:1;">
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-                  <div id="pubAiSummaryTitle" class="option-title">平台公共体验通道</div>
-                  <span id="pubAiKeyMaskPill" class="pill mono">Key: 未配置</span>
+                  <div id="pubAiSummaryTitle" class="option-title">自定义 AI 通道</div>
+                  <span id="pubAiKeyMaskPill" class="pill mono">Key: 未设置</span>
                 </div>
                 <div class="option-desc">
-                  前台用户不再需要自行配置 API 接口与端口，所有 AI 大模型接口地址、密钥、模型参数与每日配额统一由此处管理并即时下发生效。
+                  支持自由接入任意第三方中转站、OneAPI / NewAPI、公益站、Cloudflare Worker 或自建模型网关（不限主流品牌）。<br/>
+                  填写公网地址（如 <code class="mono">https://你的中转域名/v1</code>）与任意模型名即可；若路径非标准 <code class="mono">/v1</code>，在地址末尾加 <code class="mono">#</code> 可按原样精确 URL 请求。
                 </div>
+                <div id="pubAiResolvedEndpoint" class="field-hint mono" style="color:var(--pine);"></div>
               </div>
             </div>
           </div>
 
           <div class="toolbar">
             <div class="chip-group">
-              <button type="button" class="chip" onclick="applyAiPreset('智瞳 DeepSeek 体验','https://api.deepseek.com/v1','deepseek-chat')">DeepSeek 预设</button>
-              <button type="button" class="chip" onclick="applyAiPreset('通义千问体验','https://dashscope.aliyuncs.com/compatible-mode/v1','qwen-plus')">通义千问预设</button>
-              <button type="button" class="chip" onclick="applyAiPreset('Moonshot Kimi','https://api.moonshot.cn/v1','moonshot-v1-8k')">Kimi 预设</button>
-              <button type="button" class="chip" onclick="applyAiPreset('本地 Ollama','http://127.0.0.1:11434/v1','qwen2.5:14b')">Ollama 本地</button>
+              <button type="button" class="chip active" onclick="startCustomAiMode()">自定义通用接口（任意 URL / 模型）</button>
+              <span style="font-size:11.5px;color:var(--ink-light);padding:0 4px;">可选示例预设：</span>
+              <button type="button" class="chip" onclick="applyAiPreset('DeepSeek','https://api.deepseek.com/v1','deepseek-chat','openai_chat')">DeepSeek</button>
+              <button type="button" class="chip" onclick="applyAiPreset('通义千问','https://dashscope.aliyuncs.com/compatible-mode/v1','qwen-plus','openai_chat')">通义千问</button>
+              <button type="button" class="chip" onclick="applyAiPreset('Kimi','https://api.moonshot.cn/v1','moonshot-v1-8k','openai_chat')">Kimi</button>
+              <button type="button" class="chip" onclick="applyAiPreset('Claude 官方/中转','https://api.anthropic.com/v1','claude-sonnet-4-5','anthropic_messages')">Claude Messages</button>
             </div>
           </div>
 
@@ -1023,24 +1041,38 @@
               </label>
             </div>
             <div class="form-group">
-              <label class="form-label" for="pubAiProvider">前台显示名称</label>
-              <input id="pubAiProvider" class="field-input" placeholder="如 智瞳公共体验 AI" />
+              <label class="form-label" for="pubAiProvider">通道显示名称（自定义）</label>
+              <input id="pubAiProvider" class="field-input" placeholder="如：自建中转 / 公益网关 / 我的模型" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pubAiFormat">请求协议格式</label>
+              <select id="pubAiFormat" class="field-input" onchange="updateResolvedEndpointPreview()">
+                <option value="openai_chat">OpenAI Chat Completions (/chat/completions · 通用默认)</option>
+                <option value="anthropic_messages">Anthropic Claude Messages (/messages · x-api-key)</option>
+                <option value="openai_responses">OpenAI Responses API (/responses)</option>
+              </select>
+            </div>
+            <div class="form-group full">
+              <label class="form-label" for="pubAiBaseUrl">自定义接口地址（Base URL，不限域名与路径）</label>
+              <input id="pubAiBaseUrl" class="field-input mono" oninput="updateResolvedEndpointPreview()" placeholder="任意公网地址，如 https://your-relay.top/v1 或 https://example.com/api/chat#" />
+              <div class="field-hint">支持任意路径（如 <code class="mono">/v1</code>、<code class="mono">/openai</code>、<code class="mono">/custom/v2</code>）；末尾加 <code class="mono">#</code> 表示强制原样请求，不自动追加后缀。</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pubAiModel">模型 ID（支持任意自定义模型名，或先填地址后点“测试/拉取模型”）</label>
+              <input id="pubAiModel" class="field-input mono" placeholder="任意模型 ID，如 ds-4.1-flash / gpt-4o-mini / claude-sonnet-4-5" />
             </div>
             <div class="form-group">
               <label class="form-label" for="pubAiDailyLimit">每用户每日体验次数（0 表示不限次数）</label>
               <input id="pubAiDailyLimit" class="field-input mono" type="number" min="0" max="10000" value="0" />
             </div>
-            <div class="form-group">
-              <label class="form-label" for="pubAiBaseUrl">接口地址（Base URL）</label>
-              <input id="pubAiBaseUrl" class="field-input mono" placeholder="https://api.deepseek.com/v1" />
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="pubAiModel">模型名称</label>
-              <input id="pubAiModel" class="field-input mono" placeholder="deepseek-chat" />
+            <div class="form-group full">
+              <label class="form-label" for="pubAiApiKey">API Key（可选：留空保留当前已存密钥；若为免密中转也可不填）</label>
+              <input id="pubAiApiKey" class="field-input mono" type="password" autocomplete="new-password" placeholder="输入新密钥将覆盖原密钥；不修改或免密网关请留空" />
             </div>
             <div class="form-group full">
-              <label class="form-label" for="pubAiApiKey">API Key（留空表示保留当前已存密钥）</label>
-              <input id="pubAiApiKey" class="field-input mono" type="password" autocomplete="new-password" placeholder="sk-...（输入新密钥将覆盖原密钥；不修改请留空）" />
+              <label class="form-label" for="pubAiCustomHeaders">自定义请求头（可选 · JSON 对象或每行 Header: Value）</label>
+              <input id="pubAiCustomHeaders" class="field-input mono" placeholder='可选，如 {"HTTP-Referer":"https://example.com"} 或 X-Proxy-Token: xxx（留空保留已存）' />
+              <div id="pubAiHeadersStatus" class="field-hint"></div>
             </div>
             <div class="form-group">
               <label class="form-label" for="pubAiTemp">Temperature (0 ~ 2)</label>
@@ -1063,13 +1095,19 @@
           <div id="pubAiDiagResult" class="diag-box hidden"></div>
 
           <div class="form-footer">
-            <label style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-muted);cursor:pointer;">
-              <input id="pubAiClearKey" type="checkbox" style="accent-color:var(--cinnabar);" />
-              <span>清除已保存的公共 API Key</span>
-            </label>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-muted);cursor:pointer;">
+                <input id="pubAiClearKey" type="checkbox" style="accent-color:var(--cinnabar);" />
+                <span>清除已存 API Key</span>
+              </label>
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-muted);cursor:pointer;">
+                <input id="pubAiClearHeaders" type="checkbox" style="accent-color:var(--cinnabar);" />
+                <span>清除自定义请求头</span>
+              </label>
+            </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <button type="button" id="btnTestPubAi" class="btn-outline" onclick="testPublicAi()">测试接口连通性</button>
-              <button type="button" id="btnSavePubAi" class="btn-cinnabar btn-inline" onclick="savePublicAi()">保存公共 AI 设置</button>
+              <button type="button" id="btnTestPubAi" class="btn-outline" onclick="testPublicAi()">测试接口 / 拉取模型</button>
+              <button type="button" id="btnSavePubAi" class="btn-cinnabar btn-inline" onclick="savePublicAi()">保存自定义 AI 设置</button>
             </div>
           </div>
         </div>
@@ -1507,19 +1545,29 @@
         aiPill.className = "pill";
         aiPill.textContent = "未配置";
       }
-      document.getElementById("pubAiSummaryTitle").textContent = `${pubAi.provider_name || "智瞳公共体验 AI"} · ${pubAi.model || "未设置模型"}`;
-      document.getElementById("pubAiKeyMaskPill").textContent = `Key: ${pubAi.has_api_key ? pubAi.api_key_masked : "未配置"}`;
+      document.getElementById("pubAiSummaryTitle").textContent = `${pubAi.provider_name || "自定义 AI 接口"} · ${pubAi.model || "未设置模型"}`;
+      document.getElementById("pubAiKeyMaskPill").textContent = `Key: ${pubAi.has_api_key ? pubAi.api_key_masked : (pubAi.configured ? "免密钥" : "未设置")}`;
       document.getElementById("pubAiEnabled").checked = pubAi.enabled !== false;
-      document.getElementById("pubAiProvider").value = pubAi.provider_name || "智瞳公共体验 AI";
+      document.getElementById("pubAiProvider").value = pubAi.provider_name || "自定义 AI 接口";
+      document.getElementById("pubAiFormat").value = pubAi.api_format || "openai_chat";
       document.getElementById("pubAiBaseUrl").value = pubAi.base_url || "";
       document.getElementById("pubAiModel").value = pubAi.model || "";
-      document.getElementById("pubAiDailyLimit").value = pubAi.daily_limit ?? 10;
+      document.getElementById("pubAiDailyLimit").value = pubAi.daily_limit ?? 0;
       document.getElementById("pubAiTemp").value = pubAi.temperature ?? 0.3;
       document.getElementById("pubAiMaxTok").value = pubAi.max_tokens ?? 1500;
       document.getElementById("pubAiTimeout").value = pubAi.timeout_sec ?? 30;
       document.getElementById("pubAiSysPrompt").value = pubAi.system_prompt || "";
       document.getElementById("pubAiApiKey").value = "";
+      document.getElementById("pubAiCustomHeaders").value = "";
       document.getElementById("pubAiClearKey").checked = false;
+      document.getElementById("pubAiClearHeaders").checked = false;
+      const hdrHint = document.getElementById("pubAiHeadersStatus");
+      if (hdrHint) {
+        hdrHint.textContent = pubAi.has_custom_headers
+          ? `当前已存自定义请求头: ${(pubAi.custom_header_keys || []).join(", ")}`
+          : "当前未设置额外请求头（多数 OpenAI/Anthropic 中转无需填写）。";
+      }
+      updateResolvedEndpointPreview();
 
       // System Tab: Registration & Invites & Announcement
       selectRegMode(Boolean(ov.invite_required));
@@ -1616,11 +1664,53 @@
       }
     }
 
-    function applyAiPreset(provider, baseUrl, model) {
+    function updateResolvedEndpointPreview() {
+      const el = document.getElementById("pubAiResolvedEndpoint");
+      if (!el) return;
+      const raw = (document.getElementById("pubAiBaseUrl")?.value || "").trim();
+      const fmt = document.getElementById("pubAiFormat")?.value || "openai_chat";
+      if (!raw) {
+        el.textContent = "实际请求端点预览：填写 Base URL 后自动显示（任意协议路径均支持）";
+        return;
+      }
+      if (raw.endsWith("#")) {
+        el.textContent = `实际请求端点（精确模式 #）：${raw.slice(0, -1)}`;
+        return;
+      }
+      const suffix = fmt === "anthropic_messages"
+        ? "/messages"
+        : (fmt === "openai_responses" ? "/responses" : "/chat/completions");
+      try {
+        const u = new URL(raw);
+        let p = (u.pathname || "").replace(/\/+$/, "");
+        for (const s of ["/chat/completions", "/responses", "/messages", "/models"]) {
+          if (p.endsWith(s)) {
+            p = p.slice(0, -s.length).replace(/\/+$/, "");
+            break;
+          }
+        }
+        if (!p) p = "/v1";
+        el.textContent = `实际请求端点：${u.origin}${p}${suffix}`;
+      } catch {
+        el.textContent = "实际请求端点预览：请输入完整 http:// 或 https:// 地址";
+      }
+    }
+
+    function startCustomAiMode() {
+      document.getElementById("pubAiProvider").value = "自定义 AI 接口";
+      document.getElementById("pubAiFormat").value = "openai_chat";
+      document.getElementById("pubAiBaseUrl").focus();
+      updateResolvedEndpointPreview();
+      showToast("已切换至自定义通用模式，可填写任意域名、中转路径与模型名", "info");
+    }
+
+    function applyAiPreset(provider, baseUrl, model, apiFormat = "openai_chat") {
       document.getElementById("pubAiProvider").value = provider;
+      document.getElementById("pubAiFormat").value = apiFormat;
       document.getElementById("pubAiBaseUrl").value = baseUrl;
       document.getElementById("pubAiModel").value = model;
-      showToast(`已填入 ${provider} 参数预设，请补充 API Key 后保存`, "info");
+      updateResolvedEndpointPreview();
+      showToast(`已填入参考预设：${provider}（也可随时自由修改）`, "info");
     }
 
     async function savePublicAi() {
@@ -1631,19 +1721,22 @@
           method: "POST",
           body: JSON.stringify({
             enabled: document.getElementById("pubAiEnabled").checked,
-            provider_name: document.getElementById("pubAiProvider").value.trim() || "智瞳公共体验 AI",
+            provider_name: document.getElementById("pubAiProvider").value.trim() || "自定义 AI 接口",
+            api_format: document.getElementById("pubAiFormat").value || "openai_chat",
             base_url: document.getElementById("pubAiBaseUrl").value.trim(),
             model: document.getElementById("pubAiModel").value.trim(),
             api_key: document.getElementById("pubAiApiKey").value.trim(),
+            custom_headers: document.getElementById("pubAiCustomHeaders").value.trim(),
             daily_limit: Number(document.getElementById("pubAiDailyLimit").value || 0),
             temperature: Number(document.getElementById("pubAiTemp").value ?? 0.3),
             max_tokens: Number(document.getElementById("pubAiMaxTok").value || 1500),
             timeout_sec: Number(document.getElementById("pubAiTimeout").value || 30),
             system_prompt: document.getElementById("pubAiSysPrompt").value.trim(),
             clear_api_key: document.getElementById("pubAiClearKey").checked,
+            clear_custom_headers: document.getElementById("pubAiClearHeaders").checked,
           }),
         });
-        showToast("平台公共 AI 配置已保存并立即生效", "ok");
+        showToast("自定义 AI 接口配置已保存并立即生效", "ok");
         await loadOverview(false);
       } catch (e) {
         showToast(e.message, "err");
@@ -1662,16 +1755,33 @@
         const res = await api("/api/admin/public-ai/test", {
           method: "POST",
           body: JSON.stringify({
+            api_format: document.getElementById("pubAiFormat").value || "openai_chat",
             base_url: document.getElementById("pubAiBaseUrl").value.trim(),
             model: document.getElementById("pubAiModel").value.trim(),
             api_key: document.getElementById("pubAiApiKey").value.trim(),
+            custom_headers: document.getElementById("pubAiCustomHeaders").value.trim() || null,
+            clear_api_key: document.getElementById("pubAiClearKey").checked,
+            clear_custom_headers: document.getElementById("pubAiClearHeaders").checked,
           }),
         });
         box.className = `diag-box ${res.ok ? "ok" : "err"}`;
-        const modelsTxt = res.discovered_models?.length
-          ? ` | 可用模型示例：${res.discovered_models.slice(0, 5).join(", ")}`
-          : "";
-        box.textContent = `[${res.status}] ${res.message}${modelsTxt}`;
+        const models = Array.isArray(res.discovered_models) ? res.discovered_models : [];
+        let html = `<div><strong>[${esc(res.status)}]</strong> ${esc(res.message)}</div>`;
+        if (res.chat_endpoint) {
+          html += `<div class="field-hint mono" style="margin-top:4px;">实际端点: ${esc(res.chat_endpoint)} (${esc(res.api_format || "openai_chat")})</div>`;
+        }
+        if (models.length) {
+          html += `<div class="field-hint" style="margin-top:8px;">已发现 ${models.length} 个可用模型（点击直接填入模型名称框）：</div>`;
+          html += `<div class="model-pick-list">${models.map((m) => `<button type="button" class="model-pick-chip" data-model="${esc(m)}">${esc(m)}</button>`).join("")}</div>`;
+        }
+        box.innerHTML = html;
+        box.querySelectorAll(".model-pick-chip").forEach((chip) => {
+          chip.addEventListener("click", () => {
+            const m = chip.getAttribute("data-model") || "";
+            document.getElementById("pubAiModel").value = m;
+            showToast(`已填入模型：${m}`, "ok");
+          });
+        });
         box.classList.remove("hidden");
       } catch (e) {
         box.className = "diag-box err";
@@ -1679,7 +1789,7 @@
         box.classList.remove("hidden");
       } finally {
         btn.disabled = false;
-        btn.textContent = "测试接口连通性";
+        btn.textContent = "测试接口 / 拉取模型";
       }
     }
 

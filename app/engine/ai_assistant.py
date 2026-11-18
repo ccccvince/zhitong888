@@ -59,13 +59,65 @@ def mask_api_key(raw_key: str) -> str:
     return f"{key[:4]}...{key[-4:]}"
 
 
+SUPPORTED_AI_FORMATS = ("openai_chat", "openai_responses", "anthropic_messages")
+_FORBIDDEN_HEADER_NAMES = {"host", "content-length", "transfer-encoding", "connection"}
+
+
+def normalize_ai_format(raw_fmt: str | None) -> str:
+    fmt = (raw_fmt or "openai_chat").strip().lower()
+    return fmt if fmt in SUPPORTED_AI_FORMATS else "openai_chat"
+
+
+def parse_custom_headers(raw_headers: str | None) -> dict[str, str]:
+    """Parse optional custom HTTP headers from JSON object text or 'Key: Value' lines."""
+    text = (raw_headers or "").strip()
+    if not text:
+        return {}
+    headers: dict[str, str] = {}
+    if text.startswith("{"):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"自定义请求头 JSON 格式无效: {exc.msg}") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("自定义请求头必须是 JSON 对象（键值对）或每行一条 Header: Value")
+        items = parsed.items()
+    else:
+        items = []
+        for idx, line in enumerate(text.splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if ":" not in stripped:
+                raise ValueError(f"自定义请求头第 {idx} 行缺少冒号分隔符（示例: X-Custom-Auth: token）")
+            k, v = stripped.split(":", 1)
+            items.append((k, v))
+
+    for raw_k, raw_v in items:
+        k = str(raw_k or "").strip()
+        v = str(raw_v or "").strip()
+        if not k:
+            continue
+        if any(ch in k or ch in v for ch in ("\r", "\n", "\x00")):
+            raise ValueError(f"自定义请求头 {k!r} 包含非法控制字符")
+        if not re.fullmatch(r"[A-Za-z0-9!#$%&'*+.^_`|~-]+", k):
+            raise ValueError(f"自定义请求头名称无效: {k!r}")
+        if k.lower() in _FORBIDDEN_HEADER_NAMES:
+            continue
+        headers[k] = v
+    return headers
+
+
 def parse_ai_endpoint(
     raw_base_url: str,
     allow_private: bool = True,
     resolve_dns: bool = False,
+    api_format: str = "openai_chat",
 ) -> dict[str, Any]:
-    """Validate and normalize a universal OpenAI-compatible Base URL, extracting host, port, and endpoints."""
-    cleaned = (raw_base_url or "").strip().rstrip("/")
+    """Validate and normalize any custom AI endpoint, preserving custom paths or exact '#' URLs."""
+    raw_input = (raw_base_url or "").strip()
+    exact_mode = raw_input.endswith("#")
+    cleaned = raw_input.rstrip("#").strip().rstrip("/")
     if not cleaned:
         raise ValueError("AI 接口地址不能为空")
     if "://" not in cleaned:
@@ -92,8 +144,26 @@ def parse_ai_endpoint(
     if port < 1 or port > 65535:
         raise ValueError("AI 接口端口号超出有效范围 (1~65535)")
 
+    fmt = normalize_ai_format(api_format)
     path = (parts.path or "").rstrip("/")
-    for suffix in ("/chat/completions", "/models"):
+
+    if exact_mode:
+        exact_url = f"{scheme}://{parts.netloc}{path}"
+        parent_path = path.rsplit("/", 1)[0] if "/" in path.lstrip("/") else ""
+        models_ep = f"{scheme}://{parts.netloc}{parent_path}/models"
+        return {
+            "api_format": fmt,
+            "exact_endpoint": True,
+            "scheme": scheme,
+            "host": host,
+            "port": port,
+            "base_path": path or "/",
+            "base_url": f"{exact_url}#",
+            "chat_endpoint": exact_url,
+            "models_endpoint": models_ep,
+        }
+
+    for suffix in ("/chat/completions", "/responses", "/messages", "/models"):
         if path.endswith(suffix):
             path = path[: -len(suffix)].rstrip("/")
             break
@@ -101,13 +171,20 @@ def parse_ai_endpoint(
         path = "/v1"
 
     norm_base = f"{scheme}://{parts.netloc}{path}"
+    chat_suffix = {
+        "openai_chat": "/chat/completions",
+        "openai_responses": "/responses",
+        "anthropic_messages": "/messages",
+    }[fmt]
     return {
+        "api_format": fmt,
+        "exact_endpoint": False,
         "scheme": scheme,
         "host": host,
         "port": port,
         "base_path": path,
         "base_url": norm_base,
-        "chat_endpoint": f"{norm_base}/chat/completions",
+        "chat_endpoint": f"{norm_base}{chat_suffix}",
         "models_endpoint": f"{norm_base}/models",
     }
 
@@ -241,7 +318,6 @@ class AIAssistantService:
         cfg = self._get_platform_trial_config()
         return bool(
             cfg.get("enabled", True)
-            and cfg.get("api_key")
             and cfg.get("base_url")
             and cfg.get("model")
         )
@@ -287,7 +363,6 @@ class AIAssistantService:
         trial_limit = int(pub_cfg.get("daily_limit") or 0)
         trial_ok = bool(
             pub_cfg.get("enabled", True)
-            and pub_cfg.get("api_key")
             and pub_cfg.get("base_url")
             and pub_cfg.get("model")
         )
@@ -467,6 +542,146 @@ class AIAssistantService:
             checked_at=checked_at,
         )
 
+    @staticmethod
+    def _build_llm_headers_and_body(
+        *,
+        api_format: str,
+        model_name: str,
+        api_key: str,
+        sys_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+        custom_headers: Optional[dict[str, str]] = None,
+    ) -> tuple[dict[str, str], dict[str, Any]]:
+        fmt = normalize_ai_format(api_format)
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if fmt == "anthropic_messages":
+            headers["anthropic-version"] = "2023-06-01"
+            if api_key:
+                headers["x-api-key"] = api_key
+            body: dict[str, Any] = {
+                "model": model_name,
+                "messages": [{"role": "user", "content": user_prompt}],
+                "max_tokens": int(max_tokens),
+                "temperature": float(temperature),
+            }
+            if sys_prompt.strip():
+                body["system"] = sys_prompt
+        elif fmt == "openai_responses":
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            body = {
+                "model": model_name,
+                "input": user_prompt,
+                "max_output_tokens": int(max_tokens),
+                "temperature": float(temperature),
+            }
+            if sys_prompt.strip():
+                body["instructions"] = sys_prompt
+        else:
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            messages = []
+            if sys_prompt.strip():
+                messages.append({"role": "system", "content": sys_prompt})
+            messages.append({"role": "user", "content": user_prompt})
+            body = {
+                "model": model_name,
+                "messages": messages,
+                "temperature": float(temperature),
+                "max_tokens": int(max_tokens),
+            }
+        if custom_headers:
+            headers.update(custom_headers)
+        return headers, body
+
+    @staticmethod
+    def _extract_llm_text(body: Any, api_format: str) -> str:
+        if not isinstance(body, dict):
+            return ""
+        fmt = normalize_ai_format(api_format)
+        if fmt == "anthropic_messages":
+            blocks = body.get("content")
+            if isinstance(blocks, list):
+                texts = [
+                    str(b.get("text") or "")
+                    for b in blocks
+                    if isinstance(b, dict) and b.get("type") in ("text", "output_text", None) and b.get("text")
+                ]
+                joined = "".join(texts).strip()
+                if joined:
+                    return joined
+        elif fmt == "openai_responses":
+            direct = str(body.get("output_text") or "").strip()
+            if direct:
+                return direct
+            out_items = body.get("output")
+            if isinstance(out_items, list):
+                parts: list[str] = []
+                for item in out_items:
+                    if not isinstance(item, dict):
+                        continue
+                    for c in item.get("content") or []:
+                        if isinstance(c, dict) and c.get("text"):
+                            parts.append(str(c["text"]))
+                joined = "".join(parts).strip()
+                if joined:
+                    return joined
+
+        # Standard OpenAI Chat Completions (and forgiving fallback)
+        choices = body.get("choices")
+        if isinstance(choices, list) and choices:
+            choice0 = choices[0] if isinstance(choices[0], dict) else {}
+            msg = choice0.get("message") or {}
+            content = msg.get("content")
+            if isinstance(content, list):
+                text_parts = [
+                    str(p.get("text") or "")
+                    for p in content
+                    if isinstance(p, dict) and p.get("text")
+                ]
+                raw_content = "".join(text_parts).strip()
+            else:
+                raw_content = str(content or "").strip()
+            if not raw_content and msg.get("reasoning_content"):
+                raw_content = str(msg.get("reasoning_content")).strip()
+            if not raw_content and choice0.get("text"):
+                raw_content = str(choice0.get("text")).strip()
+            if raw_content:
+                return raw_content
+        return ""
+
+    @staticmethod
+    def _extract_discovered_models(m_data: Any) -> list[str]:
+        found: list[str] = []
+        if isinstance(m_data, dict):
+            items = m_data.get("data") if isinstance(m_data.get("data"), list) else m_data.get("models")
+            if isinstance(items, list):
+                for it in items:
+                    if isinstance(it, dict):
+                        mid = it.get("id") or it.get("name") or it.get("model")
+                        if mid:
+                            found.append(str(mid))
+                    elif isinstance(it, str) and it.strip():
+                        found.append(it.strip())
+        elif isinstance(m_data, list):
+            for it in m_data:
+                if isinstance(it, dict) and (it.get("id") or it.get("name")):
+                    found.append(str(it.get("id") or it.get("name")))
+                elif isinstance(it, str) and it.strip():
+                    found.append(it.strip())
+        # Preserve order while deduplicating cleanly
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for m in found:
+            if m not in seen:
+                seen.add(m)
+                dedup.append(m)
+            if len(dedup) >= 60:
+                break
+        return dedup
+
     def _probe_endpoint(
         self,
         *,
@@ -475,58 +690,73 @@ class AIAssistantService:
         api_key: str,
         timeout_sec: int = 15,
         probe_chat: bool = True,
+        custom_headers: Optional[dict[str, str]] = None,
     ) -> tuple[bool, Optional[float], Optional[int], Optional[bool], list[str], str, str]:
-        """Run TCP, /models, and optional minimal chat completion probe against an OpenAI-compatible endpoint."""
+        """Run TCP, /models discovery, and optional completion probe against any custom LLM gateway."""
         tcp_ok, tcp_ms, tcp_msg = self.tcp_probe(ep["host"], ep["port"], float(timeout_sec))
         http_status: Optional[int] = None
         chat_probe_ok: Optional[bool] = None
         discovered_models: list[str] = []
         status = "ERROR"
         message = tcp_msg
+        api_format = normalize_ai_format(ep.get("api_format"))
 
         if tcp_ok:
-            headers = {"Content-Type": "application/json"}
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
+            model_headers = {"Content-Type": "application/json"}
+            if api_format == "anthropic_messages":
+                model_headers["anthropic-version"] = "2023-06-01"
+                if api_key:
+                    model_headers["x-api-key"] = api_key
+                    model_headers["Authorization"] = f"Bearer {api_key}"
+            elif api_key:
+                model_headers["Authorization"] = f"Bearer {api_key}"
+            if custom_headers:
+                model_headers.update(custom_headers)
 
             try:
                 with self._open_client(ep["host"], float(min(timeout_sec, 15))) as client:
                     try:
-                        m_resp = client.get(ep["models_endpoint"], headers=headers)
+                        m_resp = client.get(ep["models_endpoint"], headers=model_headers)
                         http_status = m_resp.status_code
                         if m_resp.status_code == 200:
-                            m_data = m_resp.json()
-                            if isinstance(m_data, dict) and isinstance(m_data.get("data"), list):
-                                discovered_models = [
-                                    str(it["id"])
-                                    for it in m_data["data"]
-                                    if isinstance(it, dict) and it.get("id")
-                                ][:30]
+                            discovered_models = self._extract_discovered_models(m_resp.json())
                     except Exception as exc:
                         message = f"端口可达 ({tcp_ms}ms)，/models 检测异常: {type(exc).__name__}"
 
-                    if probe_chat:
+                    if probe_chat and model_name.strip():
+                        chat_headers, chat_body = self._build_llm_headers_and_body(
+                            api_format=api_format,
+                            model_name=model_name,
+                            api_key=api_key,
+                            sys_prompt="",
+                            user_prompt="请回复 OK",
+                            temperature=0.0,
+                            max_tokens=16,
+                            custom_headers=custom_headers,
+                        )
                         c_resp = client.post(
                             ep["chat_endpoint"],
-                            headers=headers,
-                            json={
-                                "model": model_name,
-                                "messages": [{"role": "user", "content": "请回复 OK"}],
-                                "max_tokens": 8,
-                                "temperature": 0,
-                            },
+                            headers=chat_headers,
+                            json=chat_body,
                         )
                         http_status = c_resp.status_code
                         if c_resp.status_code == 200:
                             c_body = c_resp.json()
-                            if isinstance(c_body, dict) and c_body.get("choices"):
+                            extracted = self._extract_llm_text(c_body, api_format)
+                            has_struct = isinstance(c_body, dict) and (
+                                bool(extracted)
+                                or bool(c_body.get("choices"))
+                                or bool(c_body.get("content"))
+                                or bool(c_body.get("output"))
+                            )
+                            if has_struct:
                                 chat_probe_ok = True
                                 status = "OK"
                                 message = f"端口 {ep['host']}:{ep['port']} 连通正常，模型 {model_name} 响应成功 ({tcp_ms}ms)"
                             else:
                                 chat_probe_ok = False
                                 status = "WARN"
-                                message = "接口返回 HTTP 200，但响应格式非标准 OpenAI choices"
+                                message = f"接口返回 HTTP 200，但响应格式与所选协议 ({api_format}) 不匹配"
                         else:
                             chat_probe_ok = False
                             err_detail = self._extract_http_error(c_resp)
@@ -534,10 +764,13 @@ class AIAssistantService:
                             message = f"TCP 端口 {ep['host']}:{ep['port']} 可达，但对话接口返回 HTTP {c_resp.status_code}: {err_detail}"
                     elif http_status == 200:
                         status = "OK"
-                        message = f"端口 {ep['host']}:{ep['port']} 可达，发现 {len(discovered_models)} 个模型"
+                        message = (
+                            f"端口 {ep['host']}:{ep['port']} 可达，发现 {len(discovered_models)} 个模型"
+                            + ("（点击下方模型标签可直接填入）" if discovered_models else "")
+                        )
                     elif http_status is not None:
                         status = "WARN"
-                        message = f"TCP 端口可达 ({tcp_ms}ms)，/models 返回 HTTP {http_status}"
+                        message = f"TCP 端口可达 ({tcp_ms}ms)，/models 返回 HTTP {http_status}；请填写模型名称后进行对话实测"
             except Exception as exc:
                 status = "ERROR"
                 message = f"TCP 端口 {ep['host']}:{ep['port']} 可达，但 HTTP 请求失败: {type(exc).__name__}"
@@ -547,33 +780,57 @@ class AIAssistantService:
     def test_platform_ai(
         self,
         *,
+        api_format: Optional[str] = None,
         base_url: str = "",
         model: str = "",
         api_key: str = "",
+        custom_headers: Optional[str] = None,
+        clear_api_key: bool = False,
+        clear_custom_headers: bool = False,
     ) -> dict[str, Any]:
-        """Validate the saved or candidate platform public trial AI endpoint."""
+        """Validate saved or candidate platform custom AI endpoint and discover available models."""
         saved = self._get_platform_trial_config()
         raw_url = (base_url or saved.get("base_url") or "").strip()
-        model_name = (model or saved.get("model") or "").strip()
-        eff_key = (api_key or saved.get("api_key") or "").strip()
-        if not raw_url or not model_name:
-            raise ValueError("请先填写公共 AI 的接口地址（Base URL）和模型名称")
+        # Allow empty model when user explicitly passes model="" along with a candidate base_url (model discovery mode)
+        model_name = model.strip() if (base_url or model) else str(saved.get("model") or "").strip()
+        eff_fmt = normalize_ai_format(api_format or saved.get("api_format"))
+        if clear_api_key:
+            eff_key = ""
+        elif api_key.strip():
+            eff_key = api_key.strip()
+        else:
+            eff_key = str(saved.get("api_key") or "").strip()
+
+        if clear_custom_headers:
+            eff_headers_raw = ""
+        elif custom_headers is not None and custom_headers.strip():
+            eff_headers_raw = custom_headers.strip()
+        else:
+            eff_headers_raw = str(saved.get("custom_headers") or "").strip()
+        eff_headers = parse_custom_headers(eff_headers_raw)
+
+        if not raw_url:
+            raise ValueError("请先填写 AI 接口地址（Base URL）")
         ep = parse_ai_endpoint(
             raw_url,
             allow_private=self.allow_private_endpoints,
             resolve_dns=not self.allow_private_endpoints,
+            api_format=eff_fmt,
         )
         tcp_ok, tcp_ms, http_status, chat_probe_ok, discovered_models, status, message = self._probe_endpoint(
             ep=ep,
             model_name=model_name,
             api_key=eff_key,
             timeout_sec=15,
-            probe_chat=True,
+            probe_chat=bool(model_name),
+            custom_headers=eff_headers,
         )
         return {
             "ok": status == "OK",
             "status": status,
             "message": message,
+            "api_format": eff_fmt,
+            "chat_endpoint": ep["chat_endpoint"],
             "tcp_reachable": tcp_ok,
             "tcp_latency_ms": tcp_ms,
             "http_status": http_status,
@@ -627,6 +884,8 @@ class AIAssistantService:
         active_host = view.host
         active_port = view.port
         active_model = view.model
+        active_format = "openai_chat"
+        active_custom_headers: dict[str, str] = {}
         active_key = str(raw_cfg.get("api_key") or "").strip()
         active_label = endpoint_label
 
@@ -641,6 +900,7 @@ class AIAssistantService:
                 active_chat_endpoint = ep_check["chat_endpoint"]
                 active_host = ep_check["host"]
                 active_port = ep_check["port"]
+                active_format = ep_check["api_format"]
             except ValueError as exc:
                 return AIAskResponse(
                     ok=False,
@@ -659,12 +919,21 @@ class AIAssistantService:
             allowed, rem = self.db.consume_platform_ai_quota(user_id, trial_limit)
             if allowed:
                 use_platform_trial = True
-                pub_ep = parse_ai_endpoint(str(pub_cfg["base_url"]), allow_private=True)
+                active_format = normalize_ai_format(pub_cfg.get("api_format"))
+                pub_ep = parse_ai_endpoint(
+                    str(pub_cfg["base_url"]),
+                    allow_private=True,
+                    api_format=active_format,
+                )
                 active_chat_endpoint = pub_ep["chat_endpoint"]
                 active_host = pub_ep["host"]
                 active_port = pub_ep["port"]
                 active_model = str(pub_cfg["model"])
-                active_key = str(pub_cfg["api_key"])
+                active_key = str(pub_cfg.get("api_key") or "")
+                try:
+                    active_custom_headers = parse_custom_headers(str(pub_cfg.get("custom_headers") or ""))
+                except ValueError:
+                    active_custom_headers = {}
                 active_label = f"{pub_cfg.get('provider_name') or '平台 AI'} · {active_model}"
                 if trial_limit > 0 and rem >= 0:
                     trial_warnings.append(
@@ -722,24 +991,23 @@ class AIAssistantService:
             (str(pub_cfg.get("system_prompt") or "") if use_platform_trial else view.system_prompt)
             or DEFAULT_AI_SYSTEM_PROMPT
         )
-        headers = {"Content-Type": "application/json"}
-        if active_key:
-            headers["Authorization"] = f"Bearer {active_key}"
+        headers, req_body = self._build_llm_headers_and_body(
+            api_format=active_format,
+            model_name=active_model,
+            api_key=active_key,
+            sys_prompt=sys_prompt,
+            user_prompt=user_prompt,
+            temperature=active_temp,
+            max_tokens=active_max_tok,
+            custom_headers=active_custom_headers,
+        )
 
         try:
             with self._open_client(active_host, float(active_timeout)) as client:
                 resp = client.post(
                     active_chat_endpoint,
                     headers=headers,
-                    json={
-                        "model": active_model,
-                        "messages": [
-                            {"role": "system", "content": sys_prompt},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        "temperature": active_temp,
-                        "max_tokens": active_max_tok,
-                    },
+                    json=req_body,
                 )
         except Exception as exc:
             err_msg = (
@@ -782,11 +1050,7 @@ class AIAssistantService:
 
         try:
             body = resp.json()
-            choice0 = (body.get("choices") or [{}])[0]
-            msg = choice0.get("message") or {}
-            raw_content = str(msg.get("content") or "").strip()
-            if not raw_content and msg.get("reasoning_content"):
-                raw_content = str(msg.get("reasoning_content")).strip()
+            raw_content = self._extract_llm_text(body, active_format)
         except Exception as exc:
             err_msg = f"解析 AI 响应 JSON 失败 ({type(exc).__name__})"
             return AIAskResponse(

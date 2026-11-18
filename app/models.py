@@ -329,8 +329,12 @@ class LimitUpScreenResponse(BaseModel):
     items: list[LimitUpStockItem]
 
 
+AIProtocolLiteral = Literal["openai_chat", "openai_responses", "anthropic_messages"]
+
+
 class AIConfigUpdateRequest(BaseModel):
     provider_name: str = Field(default="通用 OpenAI 兼容", min_length=1, max_length=60)
+    api_format: AIProtocolLiteral = "openai_chat"
     base_url: str = Field(default="http://127.0.0.1:11434/v1", min_length=1, max_length=500)
     model: str = Field(default="qwen2.5:14b", min_length=1, max_length=120)
     api_key: Optional[str] = None
@@ -527,22 +531,29 @@ class AdminRegistrationModeRequest(BaseModel):
 
 class AdminPublicAIConfigRequest(BaseModel):
     enabled: bool = True
-    provider_name: str = Field(default="智瞳公共体验 AI", min_length=1, max_length=60)
-    base_url: str = Field(default="", max_length=300)
+    provider_name: str = Field(default="自定义 AI 接口", min_length=1, max_length=60)
+    api_format: AIProtocolLiteral = "openai_chat"
+    base_url: str = Field(default="", max_length=500)
     model: str = Field(default="", max_length=120)
     api_key: str = Field(default="", max_length=300)
-    daily_limit: int = Field(default=10, ge=0, le=10000)
+    custom_headers: str = Field(default="", max_length=2000)
+    daily_limit: int = Field(default=0, ge=0, le=10000)
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     max_tokens: int = Field(default=1500, ge=128, le=8192)
     timeout_sec: int = Field(default=30, ge=3, le=180)
     system_prompt: str = Field(default="", max_length=4000)
     clear_api_key: bool = False
+    clear_custom_headers: bool = False
 
 
 class AdminPublicAITestRequest(BaseModel):
-    base_url: str = Field(default="", max_length=300)
+    api_format: Optional[AIProtocolLiteral] = None
+    base_url: str = Field(default="", max_length=500)
     model: str = Field(default="", max_length=120)
     api_key: str = Field(default="", max_length=300)
+    custom_headers: Optional[str] = Field(default=None, max_length=2000)
+    clear_api_key: bool = False
+    clear_custom_headers: bool = False
 
 
 class AdminAnnouncementRequest(BaseModel):
