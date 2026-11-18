@@ -233,6 +233,15 @@
       gap: 14px;
       align-items: start;
     }
+    .paper-workspace {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 980px) {
+      .paper-workspace { grid-template-columns: 1fr; }
+    }
     .desk-summary-grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;
     }
@@ -375,9 +384,9 @@
     .watch-list { max-height: 540px; overflow-y: auto; }
     .watch-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 60px 56px 50px;
+      grid-template-columns: minmax(0, 1fr) 58px 54px auto;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
       padding: 8px 10px;
       border-bottom: 1px solid rgba(255,255,255,0.04);
       cursor: pointer;
@@ -837,7 +846,8 @@
     </div>
 
     <nav class="main-nav" aria-label="功能分区">
-      <button id="navBtnTrade" class="main-nav-btn active" onclick="switchView('trade')"><span data-ico="chart" data-cls="ico-sm"></span><span>盯盘交易</span></button>
+      <button id="navBtnTrade" class="main-nav-btn active" onclick="switchView('trade')"><span data-ico="chart" data-cls="ico-sm"></span><span>盯盘看盘</span></button>
+      <button id="navBtnPaper" class="main-nav-btn" onclick="switchView('paper')"><span data-ico="wallet" data-cls="ico-sm"></span><span>模拟资金·买入</span></button>
       <button id="navBtnScreener" class="main-nav-btn" onclick="switchView('screener')"><span data-ico="flame" data-cls="ico-sm ico-hot"></span><span>5日涨停</span><span id="navScreenerCnt" class="nav-cnt num" style="display:none;">0</span></button>
       <button id="navBtnStrategy" class="main-nav-btn" onclick="switchView('strategy')"><span data-ico="zap" data-cls="ico-sm"></span><span>策略·回测</span><span id="navStratCnt" class="nav-cnt num">0</span></button>
       <button id="navBtnSim" class="main-nav-btn" onclick="switchView('sim')"><span data-ico="play" data-cls="ico-sm"></span><span>仿真沙盘</span></button>
@@ -854,7 +864,6 @@
       <button class="btn btn-amber" id="btnAiDrawer" onclick="openAiDrawer()" title="打开右侧大屏 AI 投研助手抽屉"><span data-ico="sparkles"></span><span>AI投研</span></button>
       <button class="btn btn-icon-only" id="btnSound" onclick="toggleSound()" title="提示音: 开" aria-label="切换提示音"><span data-ico="bell"></span></button>
       <button class="btn btn-icon-only" id="btnDesktopNotify" onclick="toggleDesktopNotification()" title="桌面通知: 关" aria-label="切换桌面通知"><span data-ico="monitor"></span></button>
-      <button class="btn btn-danger" onclick="openResetModal()" title="重置模拟账户资金与持仓">重置</button>
       <button class="btn" id="btnAccountModal" onclick="openAccountModal()" style="display:none;" title="账户信息与修改密码"><span data-ico="user" data-cls="ico-sm"></span><span id="navUsername">账户</span></button>
     </div>
   </header>
@@ -876,46 +885,12 @@
         <button class="btn btn-primary" onclick="switchMode('REAL')">切回真实行情</button>
       </div>
     </div>
-    <!-- VIEW 1: Trading Desk -->
+    <!-- VIEW 1: Watch & Chart Desk -->
     <section id="viewTrade" class="view-section active">
       <!-- Market Index Strip -->
       <section class="index-bar" id="indexBar"></section>
 
-      <!-- KPI Strip -->
-      <section class="kpi-grid">
-        <div class="kpi-card kpi-focus">
-          <div class="kpi-label">总资产 (CNY)</div>
-          <div class="kpi-val num" id="kpiAssets">--</div>
-          <div class="kpi-sub num" id="kpiInit">初始资金 --</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">可用资金</div>
-          <div class="kpi-val num" id="kpiAvailCash">--</div>
-          <div class="kpi-sub">可用于委托买入</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">挂单冻结资金</div>
-          <div class="kpi-val num" id="kpiFrozenCash">--</div>
-          <div class="kpi-sub">未成交买单占用</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">股票持仓市值</div>
-          <div class="kpi-val num" id="kpiMv">--</div>
-          <div class="kpi-sub num" id="kpiPosRatio">仓位 --</div>
-        </div>
-        <div class="kpi-card" id="kpiCardPnl">
-          <div class="kpi-label">累计总盈亏</div>
-          <div class="kpi-val num" id="kpiPnl">--</div>
-          <div class="kpi-sub num" id="kpiPnlPct">收益率 --</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">模拟账户交易日</div>
-          <div class="kpi-val num" id="kpiTradeDate">--</div>
-          <div class="kpi-sub" id="kpiServerTime">同步中...</div>
-        </div>
-      </section>
-
-      <!-- Main 3-Column Trading Desk -->
+      <!-- Main 3-Column Market Watch Desk -->
       <section class="workspace">
         <!-- Left: Watchlist -->
         <div class="col-stack">
@@ -936,7 +911,7 @@
           </div>
         </div>
 
-        <!-- Center: Quote Detail, Chart & Core Ledger Tabs -->
+        <!-- Center: Quote Detail & Intraday/Daily Chart -->
         <div class="col-stack">
           <div class="card">
             <div id="quoteBanner" class="quote-banner">
@@ -946,6 +921,7 @@
                   <span class="muted num" id="curCode">------</span>
                   <span class="pill" style="padding:2px 8px;font-size:11px;" id="curSource">--</span>
                   <button id="btnBannerDetail" class="pill-toggle" style="padding:2px 8px;font-size:11px;" onclick="openMarketDetailModal('STOCK', state.selectedCode)" title="查看个股行情档案、题材概念与多周期指标"><span data-ico="fileText" data-cls="ico-sm"></span><span>个股详情</span></button>
+                  <button id="btnBannerBuyJump" class="pill-toggle" style="padding:2px 8px;font-size:11px;border-color:rgba(239,68,68,0.45);color:#fca5a5;" onclick="switchView('paper'); setOrderSide('BUY');" title="前往「模拟资金·买入」提交买入委托"><span>模拟买入 →</span></button>
                   <button id="btnBannerPin" class="pill-toggle" style="padding:2px 8px;font-size:11px;" onclick="toggleSelectedPin()" title="置顶当前股票"><span data-ico="pin" data-cls="ico-sm"></span><span>置顶</span></button>
                   <button id="btnBannerMeta" class="pill-toggle" style="padding:2px 8px;font-size:11px;" onclick="openWatchMetaModal()" title="设置自选分组与备注"><span data-ico="edit" data-cls="ico-sm"></span><span>分组/备注</span></button>
                   <button id="btnBannerAi" class="pill-toggle" style="padding:2px 8px;font-size:11px;border-color:rgba(245,158,11,0.4);color:#fbbf24;" onclick="askAiQuick('DIAGNOSE_STOCK')" title="在右侧大屏 AI 抽屉中诊断当前股票"><span data-ico="sparkles" data-cls="ico-sm ico-ai"></span><span>AI诊股</span></button>
@@ -995,41 +971,101 @@
               <div id="chartTooltip" class="chart-tooltip num"></div>
             </div>
           </div>
-
-          <div class="card" id="ledgerCard">
-            <div class="tabs">
-              <div class="tabs-left">
-                <button class="tab-btn active" onclick="setLedgerTab('positions', this)">当前持仓 <span class="badge-cnt num" id="cntPos">0</span></button>
-                <button class="tab-btn" onclick="setLedgerTab('orders', this)">委托订单 <span class="badge-cnt num" id="cntOrd">0</span></button>
-                <button class="tab-btn" onclick="setLedgerTab('trades', this)">成交明细 <span class="badge-cnt num" id="cntTrd">0</span></button>
-                <button class="tab-btn" onclick="setLedgerTab('nav', this)">净值曲线</button>
-              </div>
-              <div class="tabs-actions">
-                <span class="muted" style="font-size:11px;" title="支持全局快捷键: ↑↓切换自选 / M分时 K日线 / 斜杠搜索">↑↓ · M/K · /</span>
-                <a class="btn" style="padding:4px 8px;font-size:11px;" href="/api/export/orders.csv" download="orders_export.csv"><span data-ico="download" data-cls="ico-sm"></span><span>委托CSV</span></a>
-                <a class="btn" style="padding:4px 8px;font-size:11px;" href="/api/export/trades.csv" download="trades_export.csv"><span data-ico="download" data-cls="ico-sm"></span><span>交割单CSV</span></a>
-                <button id="btnExpandLedger" class="btn" style="padding:4px 8px;font-size:11px;" onclick="toggleExpandLedger()" title="展开/收起底部账本高度"><span data-ico="maximize" data-cls="ico-sm"></span></button>
-              </div>
-            </div>
-            <div id="ledgerBody" class="table-wrap"></div>
-          </div>
         </div>
 
-        <!-- Right: 5-Level Book, Order Ticket & Compact Automation Summary -->
+        <!-- Right: 5-Level Book & Compact Automation Summary -->
         <div class="col-stack col-right">
           <div class="card">
             <div class="card-hd">
               <span>五档买卖盘口</span>
-              <span class="muted" style="font-size:11px;font-weight:400;">点击档位快速填价</span>
+              <span class="muted" style="font-size:11px;font-weight:400;">点击档位填入买价</span>
             </div>
             <div class="card-bd">
               <div id="orderBook" class="book-grid num"></div>
             </div>
           </div>
 
+          <div class="card" id="deskAutomationCard">
+            <div class="card-hd">
+              <span>自动化盯盘监控</span>
+              <button class="q-pill" onclick="switchView('strategy')">管理策略/预警 →</button>
+            </div>
+            <div class="card-bd">
+              <div class="desk-summary-grid num">
+                <div class="desk-stat-box">
+                  <div class="desk-stat-lbl">启用自动策略</div>
+                  <div class="desk-stat-val" id="deskStratCnt">0 条</div>
+                </div>
+                <div class="desk-stat-box">
+                  <div class="desk-stat-lbl">启用价格预警</div>
+                  <div class="desk-stat-val" id="deskAlertCnt">0 条</div>
+                </div>
+              </div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">最近预警动态</div>
+              <div id="deskRecentAlert" class="muted" style="font-size:11.5px;">暂无触发记录</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- VIEW 2: Paper Funds & Order Ticket + Account Ledger -->
+    <section id="viewPaper" class="view-section">
+      <div class="view-hd">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <h2><span data-ico="wallet" data-cls="ico-ai"></span><span>模拟资金与委托交易</span></h2>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span class="muted" style="font-size:12px;">当前交易标的:</span>
+            <select id="paperTargetSelect" class="input" style="width:auto;min-width:190px;padding:5px 8px;" onchange="selectStock(this.value)"></select>
+            <span id="paperQuotePreview" class="pill num">--</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button class="btn" onclick="openRiskModal()"><span data-ico="shield" data-cls="ico-sm"></span><span>风控限制</span></button>
+          <button class="btn btn-danger" onclick="openResetModal()" title="重置模拟账户资金与持仓">重置模拟资金</button>
+          <button class="btn" onclick="switchView('trade')">← 返回盯盘看盘</button>
+        </div>
+      </div>
+
+      <!-- KPI Strip (Moved to Dedicated Top Section Tab) -->
+      <section class="kpi-grid">
+        <div class="kpi-card kpi-focus">
+          <div class="kpi-label">总资产 (CNY)</div>
+          <div class="kpi-val num" id="kpiAssets">--</div>
+          <div class="kpi-sub num" id="kpiInit">初始资金 --</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">可用资金</div>
+          <div class="kpi-val num" id="kpiAvailCash">--</div>
+          <div class="kpi-sub">可用于委托买入</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">挂单冻结资金</div>
+          <div class="kpi-val num" id="kpiFrozenCash">--</div>
+          <div class="kpi-sub">未成交买单占用</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">股票持仓市值</div>
+          <div class="kpi-val num" id="kpiMv">--</div>
+          <div class="kpi-sub num" id="kpiPosRatio">仓位 --</div>
+        </div>
+        <div class="kpi-card" id="kpiCardPnl">
+          <div class="kpi-label">累计总盈亏</div>
+          <div class="kpi-val num" id="kpiPnl">--</div>
+          <div class="kpi-sub num" id="kpiPnlPct">收益率 --</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">模拟账户交易日</div>
+          <div class="kpi-val num" id="kpiTradeDate">--</div>
+          <div class="kpi-sub" id="kpiServerTime">同步中...</div>
+        </div>
+      </section>
+
+      <div class="paper-workspace">
+        <div class="col-stack">
           <div class="card">
             <div class="card-hd">
-              <span>模拟下单台</span>
+              <span>模拟委托下单台</span>
               <span class="muted num" style="font-size:11px;font-weight:400;" id="ticketStockTag">--</span>
             </div>
             <div class="card-bd">
@@ -1073,28 +1109,36 @@
             </div>
           </div>
 
-          <div class="card" id="deskAutomationCard">
+          <div class="card">
             <div class="card-hd">
-              <span>自动化盯盘监控</span>
-              <button class="q-pill" onclick="switchView('strategy')">管理策略/预警 →</button>
+              <span>当前标的五档参照</span>
+              <span class="muted" style="font-size:11px;font-weight:400;">点击价格填单</span>
             </div>
             <div class="card-bd">
-              <div class="desk-summary-grid num">
-                <div class="desk-stat-box">
-                  <div class="desk-stat-lbl">启用自动策略</div>
-                  <div class="desk-stat-val" id="deskStratCnt">0 条</div>
-                </div>
-                <div class="desk-stat-box">
-                  <div class="desk-stat-lbl">启用价格预警</div>
-                  <div class="desk-stat-val" id="deskAlertCnt">0 条</div>
-                </div>
-              </div>
-              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">最近预警动态</div>
-              <div id="deskRecentAlert" class="muted" style="font-size:11.5px;">暂无触发记录</div>
+              <div id="paperOrderBook" class="book-grid num"></div>
             </div>
           </div>
         </div>
-      </section>
+
+        <div class="col-stack">
+          <div class="card" id="ledgerCard">
+            <div class="tabs">
+              <div class="tabs-left">
+                <button class="tab-btn active" onclick="setLedgerTab('positions', this)">当前持仓 <span class="badge-cnt num" id="cntPos">0</span></button>
+                <button class="tab-btn" onclick="setLedgerTab('orders', this)">委托订单 <span class="badge-cnt num" id="cntOrd">0</span></button>
+                <button class="tab-btn" onclick="setLedgerTab('trades', this)">成交明细 <span class="badge-cnt num" id="cntTrd">0</span></button>
+                <button class="tab-btn" onclick="setLedgerTab('nav', this)">净值曲线</button>
+              </div>
+              <div class="tabs-actions">
+                <a class="btn" style="padding:4px 8px;font-size:11px;" href="/api/export/orders.csv" download="orders_export.csv"><span data-ico="download" data-cls="ico-sm"></span><span>委托CSV</span></a>
+                <a class="btn" style="padding:4px 8px;font-size:11px;" href="/api/export/trades.csv" download="trades_export.csv"><span data-ico="download" data-cls="ico-sm"></span><span>交割单CSV</span></a>
+                <button id="btnExpandLedger" class="btn" style="padding:4px 8px;font-size:11px;" onclick="toggleExpandLedger()" title="展开/收起底部账本高度"><span data-ico="maximize" data-cls="ico-sm"></span></button>
+              </div>
+            </div>
+            <div id="ledgerBody" class="table-wrap"></div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- VIEW 2: Full-Width 5-Day Limit-Up Screener -->
@@ -1255,7 +1299,7 @@
         <div class="card">
           <div class="card-hd"><span>快捷演练操作</span></div>
           <div class="card-bd" style="display:flex;flex-direction:column;gap:10px;">
-            <button class="btn btn-primary" onclick="switchMode('SIMULATED').then(()=>switchView('trade'))">开启仿真并前往下单台测试 →</button>
+            <button class="btn btn-primary" onclick="switchMode('SIMULATED').then(()=>switchView('paper'))">开启仿真并前往下单台测试 →</button>
             <button class="btn" onclick="switchMode('REAL').then(()=>switchView('trade'))">切回真实行情并回到盯盘交易 →</button>
             <button class="btn btn-danger" onclick="openResetModal()">重置当前模拟账户初始资金</button>
           </div>
@@ -1712,6 +1756,7 @@
       maximize: '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>',
       minimize: '<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/>',
       user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+      wallet: '<path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>',
     };
     const ico = (name, extraCls = "") => {
       const body = SVG_ICONS[name] || "";
@@ -1944,16 +1989,18 @@
     const encArg = (s) => encodeURIComponent(String(s ?? "")).replace(/'/g, "%27");
 
     function switchView(viewName, syncHash = true) {
-      const allowed = new Set(["trade", "screener", "strategy", "sim"]);
+      const allowed = new Set(["trade", "paper", "screener", "strategy", "sim"]);
       const next = allowed.has(viewName) ? viewName : "trade";
       state.activeView = next;
 
       document.getElementById("navBtnTrade")?.classList.toggle("active", next === "trade");
+      document.getElementById("navBtnPaper")?.classList.toggle("active", next === "paper");
       document.getElementById("navBtnScreener")?.classList.toggle("active", next === "screener");
       document.getElementById("navBtnStrategy")?.classList.toggle("active", next === "strategy");
       document.getElementById("navBtnSim")?.classList.toggle("active", next === "sim");
 
       document.getElementById("viewTrade")?.classList.toggle("active", next === "trade");
+      document.getElementById("viewPaper")?.classList.toggle("active", next === "paper");
       document.getElementById("viewScreener")?.classList.toggle("active", next === "screener");
       document.getElementById("viewStrategy")?.classList.toggle("active", next === "strategy");
       document.getElementById("viewSim")?.classList.toggle("active", next === "sim");
@@ -1964,6 +2011,9 @@
       if (next === "trade") {
         requestAnimationFrame(() => {
           drawMainChart();
+        });
+      } else if (next === "paper") {
+        requestAnimationFrame(() => {
           if (state.ledgerTab === "nav") drawNavCanvas();
         });
       } else if (next === "screener") {
@@ -2155,12 +2205,22 @@
       document.getElementById("stratStockTag").textContent = `${item.short_name} (${item.stock_code})`;
       const btTag = document.getElementById("btStockTag");
       if (btTag) btTag.textContent = `${item.short_name} (${item.stock_code})`;
+      const wl = state.data?.watchlist || [];
+      const optHtml = wl.map((w) =>
+        `<option value="${esc(w.stock_code)}" ${w.stock_code === state.selectedCode ? "selected" : ""}>${esc(w.short_name)} (${esc(w.stock_code)})</option>`
+      ).join("");
       const targetSel = document.getElementById("strategyTargetSelect");
-      if (targetSel) {
-        const wl = state.data?.watchlist || [];
-        targetSel.innerHTML = wl.map((w) =>
-          `<option value="${esc(w.stock_code)}" ${w.stock_code === state.selectedCode ? "selected" : ""}>${esc(w.short_name)} (${esc(w.stock_code)})</option>`
-        ).join("");
+      if (targetSel) targetSel.innerHTML = optHtml;
+      const paperSel = document.getElementById("paperTargetSelect");
+      if (paperSel) paperSel.innerHTML = optHtml;
+      const paperPrev = document.getElementById("paperQuotePreview");
+      if (paperPrev) {
+        if (q) {
+          const sign = q.change_pct >= 0 ? "+" : "";
+          paperPrev.innerHTML = `<span class="${dirCls(q.change)}">${fmt(q.price)} (${sign}${q.change_pct.toFixed(2)}%)</span>`;
+        } else {
+          paperPrev.textContent = "--";
+        }
       }
 
       const pinBtn = document.getElementById("btnBannerPin");
@@ -2296,7 +2356,10 @@
           </div>
         </div>
       `;
-      el.innerHTML = askRows.join("") + balanceHtml + bidRows.join("");
+      const bookHtml = askRows.join("") + balanceHtml + bidRows.join("");
+      el.innerHTML = bookHtml;
+      const paperEl = document.getElementById("paperOrderBook");
+      if (paperEl) paperEl.innerHTML = bookHtml;
     }
 
     function toggleExpandLedger() {
@@ -2315,6 +2378,9 @@
       state.priceEditedManually = true;
       document.getElementById("orderPrice").value = Number(px).toFixed(2);
       refreshOrderEstimate();
+      if (state.activeView === "trade") {
+        showToast(`已填入委托价 ¥${Number(px).toFixed(2)}，可切换顶部「模拟资金·买入」提交下单`, "info");
+      }
     }
 
     function fillPriceFromQuote(kind) {
@@ -3317,7 +3383,7 @@
             ${inWatch ? "" : `<button class="btn" onclick="addWatchlist('${esc(code)}', '${esc(sname)}'); closeMarketDetailModal();">+ 加入自选</button>`}
             <button class="btn" onclick="closeMarketDetailModal(); selectStock('${esc(code)}'); switchView('trade');">在主图盯盘</button>
             <button class="btn btn-amber" onclick="closeMarketDetailModal(); selectStock('${esc(code)}'); askAiQuick('DIAGNOSE_STOCK');">AI 一键诊股</button>
-            <button class="btn btn-primary" onclick="closeMarketDetailModal(); selectStock('${esc(code)}'); switchView('trade'); setOrderSide('BUY');">去下单买入</button>
+            <button class="btn btn-primary" onclick="closeMarketDetailModal(); selectStock('${esc(code)}'); switchView('paper'); setOrderSide('BUY');">去下单买入</button>
           `;
         }
       } catch (e) {
@@ -3343,6 +3409,7 @@
 
     function quickSell(code, price, availQty) {
       selectStock(code);
+      switchView("paper");
       setOrderSide("SELL");
       setTicketPrice(price);
       setQty(availQty > 0 ? availQty : 100);
@@ -3795,11 +3862,11 @@
           await selectStock(p.stock_code);
         }
         closeAiDrawer();
-        switchView("trade");
+        switchView("paper");
         setOrderSide(p.side === "SELL" ? "SELL" : "BUY");
         if (p.price > 0) setTicketPrice(p.price);
         if (p.quantity > 0) setQty(p.quantity);
-        showToast("已将 AI 建议参数预填至右侧下单台，请核对后手动提交", "info");
+        showToast("已将 AI 建议参数预填至模拟下单台，请核对后手动提交", "info");
       }
     }
 
@@ -5111,7 +5178,7 @@
       renderScreenerPanel(document.getElementById("scrPanelMount"));
       renderAiMessages();
       const initialHash = location.hash.replace("#", "").trim();
-      if (initialHash === "screener" || initialHash === "strategy" || initialHash === "sim") {
+      if (initialHash === "paper" || initialHash === "screener" || initialHash === "strategy" || initialHash === "sim") {
         switchView(initialHash, false);
       }
       try {
