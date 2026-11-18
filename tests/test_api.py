@@ -16,10 +16,11 @@ def test_full_api_workflow(tmp_path: Path) -> None:
     )
 
     with TestClient(app) as client:
-        # 1. Home HTML & initial state
+        # 1. Home HTML & favicon & initial state
         html = client.get("/")
         assert html.status_code == 200
         assert "A股智能盯盘与模拟交易系统" in html.text
+        assert client.get("/favicon.ico").status_code == 200
 
         st = client.get("/api/state").json()
         assert st["account"]["initial_cash"] == 1_000_000.0

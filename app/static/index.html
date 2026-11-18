@@ -4389,17 +4389,26 @@
     }
 
     let lastChartFetchAt = 0;
+    let lastChartCode = "";
     async function refreshChartData(force = false) {
       const now = Date.now();
-      if (!force && now - lastChartFetchAt < 2500) {
+      const targetCode = state.selectedCode;
+      if (!targetCode) return;
+      const isActiveMarket = Boolean(state.data?.session?.is_trading_hours) || state.data?.account?.market_mode === "SIMULATED";
+      const minInterval = isActiveMarket ? 3000 : 60000;
+      const sameStockReady = lastChartCode === targetCode && Boolean(state.chartData);
+      if (!force && sameStockReady && (now - lastChartFetchAt < minInterval)) {
         drawMainChart();
         return;
       }
       lastChartFetchAt = now;
+      lastChartCode = targetCode;
       try {
-        const res = await api(`/api/quotes/${state.selectedCode}/chart`);
-        state.chartData = res;
-        drawMainChart();
+        const res = await api(`/api/quotes/${encodeURIComponent(targetCode)}/chart`);
+        if (state.selectedCode === targetCode) {
+          state.chartData = res;
+          drawMainChart();
+        }
       } catch {}
     }
 

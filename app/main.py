@@ -619,6 +619,25 @@ def create_app(
     async def admin_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "admin.html")
 
+    @app.get("/favicon.ico")
+    async def favicon() -> Response:
+        svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'>"
+            "<rect width='36' height='36' rx='9' fill='#111824'/>"
+            "<rect x='1' y='1' width='34' height='34' rx='8' fill='none' stroke='#ef4444' stroke-opacity='0.55' stroke-width='1.5'/>"
+            "<path d='M9 12v14M27 8v12' stroke='#22c55e' stroke-width='2' stroke-linecap='round'/>"
+            "<rect x='7' y='15' width='4' height='7' rx='1' fill='#22c55e'/>"
+            "<path d='M18 9v17' stroke='#ef4444' stroke-width='2' stroke-linecap='round'/>"
+            "<rect x='16' y='12' width='4' height='10' rx='1' fill='#ef4444'/>"
+            "<rect x='25' y='9' width='4' height='8' rx='1' fill='#f59e0b'/>"
+            "</svg>"
+        )
+        return Response(
+            content=svg,
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
     @app.get("/api/announcement")
     async def public_announcement() -> dict[str, Any]:
         ann = ctx.db.get_announcement()
