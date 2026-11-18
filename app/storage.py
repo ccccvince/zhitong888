@@ -913,39 +913,36 @@ class Database:
             conn.execute("DELETE FROM invite_codes WHERE UPPER(code) = ?", (clean,))
 
     def get_platform_ai_usage(self, user_id: str, daily_limit: int) -> tuple[int, int]:
-        """Return (used_today, remaining_today)."""
-        if daily_limit <= 0:
-            return 0, 0
+        """Return (used_today, remaining_today). remaining=-1 means unlimited (daily_limit <= 0)."""
         today = today_str()
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT ai_calls_today, ai_calls_date FROM users WHERE user_id = ?", (user_id,)
             ).fetchone()
-            if not row:
-                return 0, daily_limit
-            used = int(row["ai_calls_today"] or 0) if row["ai_calls_date"] == today else 0
+            used = int(row["ai_calls_today"] or 0) if (row and row["ai_calls_date"] == today) else 0
+            if daily_limit <= 0:
+                return used, -1
             return used, max(0, daily_limit - used)
 
     def consume_platform_ai_quota(self, user_id: str, daily_limit: int) -> tuple[bool, int]:
-        """Atomically consume 1 platform AI quota call for today; returns (allowed, remaining_after)."""
-        if daily_limit <= 0:
-            return False, 0
+        """Atomically consume 1 platform AI quota call for today; daily_limit<=0 means unlimited."""
         today = today_str()
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT ai_calls_today, ai_calls_date FROM users WHERE user_id = ?", (user_id,)
             ).fetchone()
             if not row:
-                return True, max(0, daily_limit - 1)
+                return True, (-1 if daily_limit <= 0 else max(0, daily_limit - 1))
             used = int(row["ai_calls_today"] or 0) if row["ai_calls_date"] == today else 0
-            if used >= daily_limit:
+            if daily_limit > 0 and used >= daily_limit:
                 return False, 0
             new_used = used + 1
             conn.execute(
                 "UPDATE users SET ai_calls_today = ?, ai_calls_date = ? WHERE user_id = ?",
                 (new_used, today, user_id),
             )
-            return True, max(0, daily_limit - new_used)
+            rem = -1 if daily_limit <= 0 else max(0, daily_limit - new_used)
+            return True, rem
 
     def list_all_account_user_ids(self) -> list[str]:
         with self.connect() as conn:
@@ -993,7 +990,10 @@ class Database:
         except ValueError:
             timeout_sec = 30
         system_prompt = self.get_system_setting("public_ai_system_prompt", "")
+        raw_enabled = self.get_system_setting("public_ai_enabled", "").strip().lower()
+        enabled = True if raw_enabled == "" else (raw_enabled == "true")
         return {
+            "enabled": enabled,
             "provider_name": provider or "智瞳公共体验 AI",
             "base_url": base_url,
             "model": model,
@@ -1018,8 +1018,10 @@ class Database:
         max_tokens: int = 1500,
         timeout_sec: int = 30,
         system_prompt: str = "",
+        enabled: bool = True,
     ) -> dict[str, Any]:
         """Persist platform trial AI config in system_settings."""
+        self.set_system_setting("public_ai_enabled", "true" if enabled else "false")
         self.set_system_setting("public_ai_provider", (provider_name or "智瞳公共体验 AI").strip()[:60])
         self.set_system_setting("public_ai_base_url", (base_url or "").strip()[:300])
         self.set_system_setting("public_ai_model", (model or "").strip()[:120])

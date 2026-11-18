@@ -495,6 +495,30 @@ def test_admin_page_telemetry_public_ai_and_announcement(tmp_path: Path) -> None
         me_u = user_cli.get("/api/auth/me").json()
         assert me_u["user"]["ai_daily_limit"] == 12
 
+        # daily_limit=0 with enabled=True works as unlimited; enabled=False disables it
+        unlim = admin_cli.post(
+            "/api/admin/public-ai",
+            json={
+                "enabled": True,
+                "provider_name": "智瞳体验",
+                "base_url": "https://api.deepseek.com/v1",
+                "model": "deepseek-chat",
+                "daily_limit": 0,
+            },
+        )
+        assert unlim.status_code == 200 and unlim.json()["public_ai"]["configured"] is True
+        dis = admin_cli.post(
+            "/api/admin/public-ai",
+            json={
+                "enabled": False,
+                "provider_name": "智瞳体验",
+                "base_url": "https://api.deepseek.com/v1",
+                "model": "deepseek-chat",
+                "daily_limit": 0,
+            },
+        )
+        assert dis.status_code == 200 and dis.json()["public_ai"]["configured"] is False
+
         # Index & stock instant detail endpoints
         idx_res = user_cli.get("/api/indices/sh000001/detail")
         assert idx_res.status_code == 200

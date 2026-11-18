@@ -444,10 +444,10 @@ def _to_auth_user_view(row: dict[str, Any], db: Optional[Database] = None) -> Au
         pub_cfg = db.get_public_ai_config()
         daily_limit = int(pub_cfg.get("daily_limit") or 0)
         has_trial = bool(
-            pub_cfg.get("api_key")
+            pub_cfg.get("enabled", True)
+            and pub_cfg.get("api_key")
             and pub_cfg.get("base_url")
             and pub_cfg.get("model")
-            and daily_limit > 0
         )
     else:
         daily_limit = settings.public_ai_daily_limit
@@ -455,7 +455,6 @@ def _to_auth_user_view(row: dict[str, Any], db: Optional[Database] = None) -> Au
             settings.public_ai_api_key
             and settings.public_ai_base_url
             and settings.public_ai_model
-            and daily_limit > 0
         )
     return AuthUserView(
         user_id=str(row["user_id"]),
@@ -867,6 +866,7 @@ def create_app(
                 "site_url": settings.site_url,
             },
             "public_ai": {
+                "enabled": bool(pub_ai.get("enabled", True)),
                 "provider_name": str(pub_ai.get("provider_name") or "智瞳公共体验 AI"),
                 "base_url": str(pub_ai.get("base_url") or ""),
                 "model": str(pub_ai.get("model") or ""),
@@ -878,10 +878,10 @@ def create_app(
                 "has_api_key": bool(pub_key),
                 "api_key_masked": mask_api_key(pub_key),
                 "configured": bool(
-                    pub_key
+                    pub_ai.get("enabled", True)
+                    and pub_key
                     and pub_ai.get("base_url")
                     and pub_ai.get("model")
-                    and int(pub_ai.get("daily_limit") or 0) > 0
                 ),
             },
             "announcement": ctx.db.get_announcement(),
@@ -925,11 +925,13 @@ def create_app(
             max_tokens=req.max_tokens,
             timeout_sec=req.timeout_sec,
             system_prompt=req.system_prompt,
+            enabled=req.enabled,
         )
         pub_key = str(saved.get("api_key") or "")
         return {
             "ok": True,
             "public_ai": {
+                "enabled": bool(saved.get("enabled", True)),
                 "provider_name": saved["provider_name"],
                 "base_url": saved["base_url"],
                 "model": saved["model"],
@@ -941,7 +943,7 @@ def create_app(
                 "has_api_key": bool(pub_key),
                 "api_key_masked": mask_api_key(pub_key),
                 "configured": bool(
-                    pub_key and saved["base_url"] and saved["model"] and int(saved["daily_limit"]) > 0
+                    saved.get("enabled", True) and pub_key and saved["base_url"] and saved["model"]
                 ),
             },
         }

@@ -526,6 +526,7 @@ class AdminRegistrationModeRequest(BaseModel):
 
 
 class AdminPublicAIConfigRequest(BaseModel):
+    enabled: bool = True
     provider_name: str = Field(default="智瞳公共体验 AI", min_length=1, max_length=60)
     base_url: str = Field(default="", max_length=300)
     model: str = Field(default="", max_length=120)

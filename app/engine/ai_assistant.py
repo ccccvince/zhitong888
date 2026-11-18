@@ -240,10 +240,10 @@ class AIAssistantService:
     def _has_platform_trial(self) -> bool:
         cfg = self._get_platform_trial_config()
         return bool(
-            cfg.get("api_key")
+            cfg.get("enabled", True)
+            and cfg.get("api_key")
             and cfg.get("base_url")
             and cfg.get("model")
-            and int(cfg.get("daily_limit") or 0) > 0
         )
 
     def _get_raw_row(self, user_id: str = "default") -> dict[str, Any]:
@@ -286,10 +286,10 @@ class AIAssistantService:
         pub_cfg = self._get_platform_trial_config()
         trial_limit = int(pub_cfg.get("daily_limit") or 0)
         trial_ok = bool(
-            pub_cfg.get("api_key")
+            pub_cfg.get("enabled", True)
+            and pub_cfg.get("api_key")
             and pub_cfg.get("base_url")
             and pub_cfg.get("model")
-            and trial_limit > 0
         )
         trial_rem = 0
         if trial_ok:
@@ -630,7 +630,8 @@ class AIAssistantService:
         active_key = str(raw_cfg.get("api_key") or "").strip()
         active_label = endpoint_label
 
-        if view.enabled:
+        use_personal = view.enabled and (bool(active_key) or _is_local_host(active_host))
+        if use_personal:
             try:
                 ep_check = parse_ai_endpoint(
                     view.base_url,
@@ -664,10 +665,11 @@ class AIAssistantService:
                 active_port = pub_ep["port"]
                 active_model = str(pub_cfg["model"])
                 active_key = str(pub_cfg["api_key"])
-                active_label = f"{pub_cfg.get('provider_name') or '平台体验 AI'} · {active_model}"
-                trial_warnings.append(
-                    f"使用平台 AI 通道（今日剩余 {rem}/{trial_limit} 次）"
-                )
+                active_label = f"{pub_cfg.get('provider_name') or '平台 AI'} · {active_model}"
+                if trial_limit > 0 and rem >= 0:
+                    trial_warnings.append(
+                        f"使用平台 AI 通道（今日剩余 {rem}/{trial_limit} 次）"
+                    )
             else:
                 fallback_reply, drafts = self._build_local_fallback(
                     req=req,
