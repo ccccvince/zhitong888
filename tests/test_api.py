@@ -56,7 +56,7 @@ def test_full_api_workflow(tmp_path: Path) -> None:
 
         # 5. Place buy order in SIMULATED mode using limit_up/current price -> immediate fill
         q_000001 = next(w["quote"] for w in tick_res["watchlist"] if w["stock_code"] == "000001")
-        buy_px = q_000001["asks"][0]["price"] if q_000001["asks"] else q_000001["price"]
+        buy_px = q_000001["asks"][-1]["price"] if q_000001["asks"] else q_000001["price"]
         buy_res = client.post(
             "/api/orders",
             json={
