@@ -892,7 +892,7 @@
 
     <div class="search-wrap global-search-wrap">
       <span class="global-search-ico"><span data-ico="search" data-cls="ico-sm"></span></span>
-      <input id="globalStockSearch" class="global-search-input" placeholder="搜个股 代码/简称/拼音 (/)" autocomplete="off" />
+      <input id="globalStockSearch" type="search" name="global-stock-q" class="global-search-input" placeholder="搜个股 代码/简称/拼音 (/)" autocomplete="one-time-code" data-lpignore="true" />
       <div id="globalSearchDropdown" class="search-dropdown"></div>
     </div>
 
@@ -946,7 +946,7 @@
               </div>
             </div>
             <div class="search-wrap">
-              <input id="stockSearchInput" class="input" placeholder="搜索代码 / 简称 / 拼音添加自选 (快捷键 /)..." autocomplete="off" />
+              <input id="stockSearchInput" type="search" name="watch-stock-q" class="input" placeholder="搜索代码 / 简称 / 拼音添加自选 (快捷键 /)..." autocomplete="one-time-code" data-lpignore="true" />
               <div id="searchDropdown" class="search-dropdown"></div>
             </div>
             <div id="watchFilters" class="watch-filters"></div>
@@ -1905,10 +1905,25 @@
     }
 
     async function api(url, opts = {}) {
-      const res = await fetch(url, {
-        headers: { "Content-Type": "application/json" },
-        ...opts,
-      });
+      const timeoutMs = Number(opts.timeoutMs ?? (url.startsWith("/api/ai/") ? 90000 : 20000));
+      const { timeoutMs: _ignoredTimeout, signal: userSignal, ...fetchOpts } = opts;
+      const ctrl = !userSignal && timeoutMs > 0 ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+      let res;
+      try {
+        res = await fetch(url, {
+          headers: { "Content-Type": "application/json" },
+          signal: userSignal || (ctrl ? ctrl.signal : undefined),
+          ...fetchOpts,
+        });
+      } catch (err) {
+        if (err && err.name === "AbortError") {
+          throw new Error("请求超时，请检查网络或重试");
+        }
+        throw err;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
       const body = await res.json().catch(() => ({}));
       if (res.status === 401 && !url.startsWith("/api/auth/")) {
         showAuthGate("登录状态已失效，请重新登录");
@@ -3588,6 +3603,12 @@
         }
       } catch (e) {
         document.getElementById("mdTitle").textContent = "加载失败";
+        document.getElementById("mdMetricsGrid").innerHTML = `
+          <div class="detail-metric-box" style="grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <span class="up">${esc(e.message || "无法获取详情，请重试")}</span>
+            <button class="btn btn-primary" onclick="openMarketDetailModal('${esc(kind)}', '${esc(id)}')">重新加载</button>
+          </div>
+        `;
         showToast(e.message || "无法获取详情", "err");
       }
     }
@@ -5422,12 +5443,13 @@
       try {
         const initial = await api("/api/state");
         applyState(initial);
-        await refreshChartData(true);
+        connectWS();
+        refreshChartData(true);
         if (state.selectedCode) loadStockQuickStrip(state.selectedCode);
       } catch (e) {
         showToast("初始化加载失败: " + e.message, "err");
+        connectWS();
       }
-      connectWS();
     }
 
     (async function init() {

@@ -679,24 +679,7 @@ class MarketDataManager:
                 return cached[1]
 
         bars: list[MinuteBar] = []
-        try:
-            df = adata.stock.market.get_market_min(stock_code)
-            if df is not None and not df.empty:
-                for _, row in df.iterrows():
-                    t_str = str(row.get("trade_time", ""))
-                    hhmm = t_str.split(" ")[-1][:5] if " " in t_str else t_str[:5]
-                    bars.append(
-                        MinuteBar(
-                            time=hhmm,
-                            price=round(float(row["price"]), 2),
-                            avg_price=round(float(row.get("avg_price", row["price"])), 2),
-                            volume=float(row.get("volume", 0.0)),
-                        )
-                    )
-        except Exception:
-            bars = []
-
-        if not bars and self.network_enabled:
+        if self.network_enabled:
             sym = to_tencent_symbol(stock_code)
             try:
                 mresp = httpx.get(
@@ -738,6 +721,24 @@ class MarketDataManager:
             except Exception:
                 bars = []
 
+            if not bars:
+                try:
+                    df = adata.stock.market.get_market_min(stock_code)
+                    if df is not None and not df.empty:
+                        for _, row in df.iterrows():
+                            t_str = str(row.get("trade_time", ""))
+                            hhmm = t_str.split(" ")[-1][:5] if " " in t_str else t_str[:5]
+                            bars.append(
+                                MinuteBar(
+                                    time=hhmm,
+                                    price=round(float(row["price"]), 2),
+                                    avg_price=round(float(row.get("avg_price", row["price"])), 2),
+                                    volume=float(row.get("volume", 0.0)),
+                                )
+                            )
+                except Exception:
+                    bars = []
+
         if not bars:
             q = self.get_quote(stock_code)
             if q:
@@ -757,64 +758,64 @@ class MarketDataManager:
 
         raw_bars: list[dict] = []
         if self.network_enabled:
-            # Fetch longer lookback so MA20 & MACD(12,26,9) warm up cleanly before the displayed tail
-            lookback_cal_days = max(220, days * 2 + 120)
-            start_date = (beijing_now() - timedelta(days=lookback_cal_days)).strftime("%Y-%m-%d")
+            sym = to_tencent_symbol(stock_code)
             try:
-                df = adata.stock.market.get_market(stock_code, start_date=start_date)
-                if df is not None and not df.empty:
-                    for _, row in df.iterrows():
+                kresp = httpx.get(
+                    "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get",
+                    params={"param": f"{sym},day,,,{max(120, days + 60)},qfq"},
+                    timeout=4.0,
+                )
+                if kresp.status_code == 200:
+                    kdata = (kresp.json().get("data") or {}).get(sym) or {}
+                    rows = kdata.get("qfqday") or kdata.get("day") or []
+                    prev_c = 0.0
+                    for row in rows:
+                        if len(row) < 6:
+                            continue
+                        o = _safe_float(str(row[1]))
+                        c = _safe_float(str(row[2]))
+                        h = _safe_float(str(row[3]))
+                        l = _safe_float(str(row[4]))
+                        v = _safe_float(str(row[5])) * 100.0
+                        pct = round(((c - prev_c) / prev_c) * 100, 2) if prev_c > 0 else 0.0
                         raw_bars.append(
                             {
-                                "trade_date": str(row["trade_date"]),
-                                "open": round(float(row["open"]), 2),
-                                "high": round(float(row["high"]), 2),
-                                "low": round(float(row["low"]), 2),
-                                "close": round(float(row["close"]), 2),
-                                "volume": float(row.get("volume", 0.0)),
-                                "amount": float(row.get("amount", 0.0)),
-                                "change_pct": round(float(row.get("change_pct", 0.0)), 2),
-                                "turnover_ratio": round(float(row.get("turnover_ratio", 0.0)), 2),
+                                "trade_date": str(row[0]),
+                                "open": round(o, 2),
+                                "close": round(c, 2),
+                                "high": round(h, 2),
+                                "low": round(l, 2),
+                                "volume": v,
+                                "amount": round(v * c, 2),
+                                "change_pct": pct,
+                                "turnover_ratio": 0.0,
                             }
                         )
+                        prev_c = c
             except Exception:
                 raw_bars = []
 
             if not raw_bars:
-                sym = to_tencent_symbol(stock_code)
+                # Fallback to adata with extended lookback for MA20 & MACD warmup
+                lookback_cal_days = max(220, days * 2 + 120)
+                start_date = (beijing_now() - timedelta(days=lookback_cal_days)).strftime("%Y-%m-%d")
                 try:
-                    kresp = httpx.get(
-                        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get",
-                        params={"param": f"{sym},day,,,{max(120, days + 60)},qfq"},
-                        timeout=4.0,
-                    )
-                    if kresp.status_code == 200:
-                        kdata = (kresp.json().get("data") or {}).get(sym) or {}
-                        rows = kdata.get("qfqday") or kdata.get("day") or []
-                        prev_c = 0.0
-                        for row in rows:
-                            if len(row) < 6:
-                                continue
-                            o = _safe_float(str(row[1]))
-                            c = _safe_float(str(row[2]))
-                            h = _safe_float(str(row[3]))
-                            l = _safe_float(str(row[4]))
-                            v = _safe_float(str(row[5])) * 100.0
-                            pct = round(((c - prev_c) / prev_c) * 100, 2) if prev_c > 0 else 0.0
+                    df = adata.stock.market.get_market(stock_code, start_date=start_date)
+                    if df is not None and not df.empty:
+                        for _, row in df.iterrows():
                             raw_bars.append(
                                 {
-                                    "trade_date": str(row[0]),
-                                    "open": round(o, 2),
-                                    "close": round(c, 2),
-                                    "high": round(h, 2),
-                                    "low": round(l, 2),
-                                    "volume": v,
-                                    "amount": round(v * c, 2),
-                                    "change_pct": pct,
-                                    "turnover_ratio": 0.0,
+                                    "trade_date": str(row["trade_date"]),
+                                    "open": round(float(row["open"]), 2),
+                                    "high": round(float(row["high"]), 2),
+                                    "low": round(float(row["low"]), 2),
+                                    "close": round(float(row["close"]), 2),
+                                    "volume": float(row.get("volume", 0.0)),
+                                    "amount": float(row.get("amount", 0.0)),
+                                    "change_pct": round(float(row.get("change_pct", 0.0)), 2),
+                                    "turnover_ratio": round(float(row.get("turnover_ratio", 0.0)), 2),
                                 }
                             )
-                            prev_c = c
                 except Exception:
                     raw_bars = []
 
@@ -1413,6 +1414,35 @@ class MarketDataManager:
             "summary": self._summarize_daily_technicals(daily, snap.price),
         }
 
+    def _fetch_stock_concepts(self, code: str, timeout_sec: float = 2.0) -> list[str]:
+        now_ts = time.time()
+        with self._lock:
+            cc = self._concept_cache.get(code)
+            if cc and (now_ts - cc[0]) < 3600.0:
+                return list(cc[1])
+        if not self.network_enabled:
+            return []
+        concepts: list[str] = []
+
+        def _query() -> list[str]:
+            cdf = adata.stock.info.get_concept_ths(code)
+            if cdf is not None and not cdf.empty and "name" in cdf.columns:
+                return [str(x).strip() for x in cdf["name"].dropna().tolist() if str(x).strip()][:8]
+            return []
+
+        pool_exec = ThreadPoolExecutor(max_workers=1)
+        try:
+            fut = pool_exec.submit(_query)
+            concepts = fut.result(timeout=timeout_sec)
+        except Exception:
+            concepts = []
+        finally:
+            pool_exec.shutdown(wait=False, cancel_futures=True)
+
+        with self._lock:
+            self._concept_cache[code] = (now_ts, concepts)
+        return concepts
+
     def fetch_stock_detail(self, stock_code: str, mode: MarketMode = MarketMode.REAL) -> dict:
         """Fetch comprehensive quote, technical summary, concepts, intraday mins, and daily bars (works 24/7 including market closed hours)."""
         code = stock_code.strip()
@@ -1420,27 +1450,13 @@ class MarketDataManager:
         if not q:
             q = self.refresh_quotes([(code, code)], mode=mode).get(code) or self._build_seed_quote(code)
 
-        daily = self.fetch_daily_kline(code, days=60)
-        mins = self.fetch_intraday_mins(code, mode=mode)
-        concepts: list[str] = []
-        now_ts = time.time()
-        with self._lock:
-            cc = self._concept_cache.get(code)
-            if cc and (now_ts - cc[0]) < 3600.0:
-                concepts = list(cc[1])
-                cc_hit = True
-            else:
-                cc_hit = False
-
-        if not cc_hit and self.network_enabled:
-            try:
-                cdf = adata.stock.info.get_concept_ths(code)
-                if cdf is not None and not cdf.empty and "name" in cdf.columns:
-                    concepts = [str(x).strip() for x in cdf["name"].dropna().tolist() if str(x).strip()][:8]
-            except Exception:
-                concepts = []
-            with self._lock:
-                self._concept_cache[code] = (now_ts, concepts)
+        with ThreadPoolExecutor(max_workers=3) as pool_exec:
+            f_daily = pool_exec.submit(self.fetch_daily_kline, code, 60)
+            f_mins = pool_exec.submit(self.fetch_intraday_mins, code, mode)
+            f_concepts = pool_exec.submit(self._fetch_stock_concepts, code, 2.0)
+            daily = f_daily.result()
+            mins = f_mins.result()
+            concepts = f_concepts.result()
 
         q_dict = q.model_dump()
         last_trade_date = ""
